@@ -83,3 +83,6 @@ def check_for_new_products():
         #write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
+
+if __name__ == '__main__':
+    check_for_new_products()
