@@ -10,11 +10,11 @@ url = 'https://www.halseymusicstore.eu/products.json'
 previous_products_file = 'previous_products.csv'
 
 # Twitter API credentials
-API_KEY = '5xRUBnLbsL69owtta4WeFQdFx'
-API_SECRET_KEY = '5wRguMrjCewzcKIw2fXLez9FgT0Ljb4IgOpknhNjCr9a72Fz2p'
-ACCESS_TOKEN = '1834273643955732480-PzuN7oQWNOOEKkEwXJZMnjOmBrQejm'
-ACCESS_TOKEN_SECRET = 'QQRtYN4ULXxxdwqVVw9HpSPGmgRqu69nXUGMlWHY6lVdh'
-BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAAVwvwEAAAAAtaLP8Hxyk2yd096YrUXSxfAUb9M%3Dz1bY7dweFgrbLeaoTlQiaMLiHd8UxJmaSfFGR43K5tisfgA0Qs'
+API_KEY = os.getenv('API_KEY')
+API_SECRET_KEY = os.getenv('API_SECRET_KEY')
+ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
+ACCESS_TOKEN_SECRET = os.getenv('ACCESS_TOKEN_SECRET')
+BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 
 # Set up tweepy client for OAuth 2.0 User Context
 client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET)
@@ -83,11 +83,3 @@ def check_for_new_products():
         #write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
-
-def start_monitoring(interval=60):
-    while True:
-        check_for_new_products()
-        time.sleep(interval)
-
-# Call the start_monitoring function to begin monitoring every minute
-start_monitoring()
