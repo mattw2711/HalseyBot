@@ -72,15 +72,15 @@ def check_for_new_products():
             title = product['title']
             if title in new_products:
                 print(f"New product added: {title}")
-                #tweet(product, "NEW PRODUCT")
+                tweet(product, "NEW PRODUCT")
             elif title in restocked_products:
                 print(f"Product back in stock: {title}")
-                #tweet(product, "BACK IN STOCK")
+                tweet(product, "BACK IN STOCK")
             elif title in out_of_stock_products:
                 print(f"Product out of stock: {title}")
-                #tweet(product, "OUT OF STOCK")
+                tweet(product, "OUT OF STOCK")
         
-        #write_current_products(previous_products_file, current_products)
+        write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
