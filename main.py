@@ -19,7 +19,7 @@ BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 # Set up tweepy client for OAuth 2.0 User Context
 client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET)
 auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET_KEY, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-api = tweepy.API(auth)
+api = tweepy.API(auth, wait_on_rate_limit=True)
 
 def read_previous_products(file_path):
     if os.path.exists(file_path):
@@ -68,17 +68,25 @@ def check_for_new_products():
         restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
         out_of_stock_products = {title for title in previous_products if title in current_products and previous_products[title] and not current_products[title]}
         
-        for product in data['products']:
+        for product in new_products:
+            state = product['variants'][0]['available']
             title = product['title']
-            if title in new_products:
+            if state:
                 print(f"New product added: {title}")
                 tweet(product, "NEW PRODUCT")
-            elif title in restocked_products:
-                print(f"Product back in stock: {title}")
-                tweet(product, "BACK IN STOCK")
-            elif title in out_of_stock_products:
+            else:
                 print(f"Product out of stock: {title}")
                 tweet(product, "OUT OF STOCK")
+
+        for product in restocked_products:
+            title = product['title']
+            print(f"Product back in stock: {title}")
+            tweet(product, "BACK IN STOCK")
+
+        for product in out_of_stock_products:
+            title = product['title']
+            print(f"Product out of stock: {title}")
+            tweet(product, "OUT OF STOCK")
         
         write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:
