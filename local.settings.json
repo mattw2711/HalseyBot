@@ -1,8 +1,12 @@
 {
   "IsEncrypted": false,
   "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
-    "AzureWebJobsFeatureFlags": "EnableWorkerIndexing",
-    "AzureWebJobsStorage": ""
+    "API_KEY": "5xRUBnLbsL69owtta4WeFQdFx",
+    "API_SECRET_KEY": "5wRguMrjCewzcKIw2fXLez9FgT0Ljb4IgOpknhNjCr9a72Fz2p",
+    "ACCESS_TOKEN": "1834273643955732480-PzuN7oQWNOOEKkEwXJZMnjOmBrQejm",
+    "ACCESS_TOKEN_SECRET": "QQRtYN4ULXxxdwqVVw9HpSPGmgRqu69nXUGMlWHY6lVdh",
+    "BEARER_TOKEN": "AAAAAAAAAAAAAAAAAAAAAAVwvwEAAAAAtaLP8Hxyk2yd096YrUXSxfAUb9M%3Dz1bY7dweFgrbLeaoTlQiaMLiHd8UxJmaSfFGR43K5tisfgA0Qs"
   }
 }

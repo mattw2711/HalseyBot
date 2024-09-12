@@ -15,8 +15,6 @@ API_SECRET_KEY = '5wRguMrjCewzcKIw2fXLez9FgT0Ljb4IgOpknhNjCr9a72Fz2p'
 ACCESS_TOKEN = '1834273643955732480-PzuN7oQWNOOEKkEwXJZMnjOmBrQejm'
 ACCESS_TOKEN_SECRET = 'QQRtYN4ULXxxdwqVVw9HpSPGmgRqu69nXUGMlWHY6lVdh'
 BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAAVwvwEAAAAAtaLP8Hxyk2yd096YrUXSxfAUb9M%3Dz1bY7dweFgrbLeaoTlQiaMLiHd8UxJmaSfFGR43K5tisfgA0Qs'
-CLIENT_ID = 'dVltRU5SZ1pHNndqVWwtSmtMekU6MTpjaQ'
-CLIENT_SECRET = 'UgmtU5SQMxBe8-10zlGycw7Hbqy5KHgJrov7gWpNSfZYgf_Qor'
 
 # Set up tweepy client for OAuth 2.0 User Context
 client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET)
@@ -82,7 +80,7 @@ def check_for_new_products():
                 print(f"Product out of stock: {title}")
                 #tweet(product, "OUT OF STOCK")
         
-        write_current_products(previous_products_file, current_products)
+        #write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
