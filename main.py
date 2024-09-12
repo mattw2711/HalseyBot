@@ -1,11 +1,13 @@
 import requests
 import time
 import tweepy
+import csv
+import os
 import json
 
 # URL to fetch products
 url = 'https://www.halseymusicstore.eu/products.json'
-previous_products = set()
+previous_products_file = 'previous_products.csv'
 
 # Twitter API credentials
 API_KEY = '5xRUBnLbsL69owtta4WeFQdFx'
@@ -17,16 +19,33 @@ CLIENT_ID = 'dVltRU5SZ1pHNndqVWwtSmtMekU6MTpjaQ'
 CLIENT_SECRET = 'UgmtU5SQMxBe8-10zlGycw7Hbqy5KHgJrov7gWpNSfZYgf_Qor'
 
 # Set up tweepy client for OAuth 2.0 User Context
-client = tweepy.Client(BEARER_TOKEN, API_KEY, API_SECRET_KEY, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET)
 auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET_KEY, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
 api = tweepy.API(auth)
 
-def tweet(product):
+def read_previous_products(file_path):
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r') as file:
+                reader = csv.reader(file)
+                return {rows[0]: rows[1] == 'True' for rows in reader}
+        except (csv.Error, IndexError):
+            # Handle empty or malformed CSV file
+            return {}
+    return {}
+
+def write_current_products(file_path, products):
+    with open(file_path, 'w', newline='') as file:
+        writer = csv.writer(file)
+        for product, available in products.items():
+            writer.writerow([product, available])
+
+def tweet(product, status):
     try:
         title = product['title'].title()
         price = product['variants'][0]['price']
         link = f"https://www.halseymusicstore.eu/products/{product['handle']}"
-        tweet_text = f"🚨 NEW PRODUCT ALERT 🚨\n{title} - €{price}\n {link}"
+        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - €{price}\n🔗 {link}"
         
         response = client.create_tweet(text=tweet_text)
 
@@ -39,22 +58,31 @@ def tweet(product):
         print(f"Error tweeting: {e}")
 
 def check_for_new_products():
-    global previous_products
+    previous_products = read_previous_products(previous_products_file)
     try:
         r = requests.get(url)
         r.raise_for_status()  # Raise an HTTPError for bad responses
         data = r.json()
         
-        current_products = set(item['title'] for item in data['products'])
+        current_products = {item['title']: item['variants'][0]['available'] for item in data['products']}
         
-        new_products = current_products - previous_products
+        new_products = set(current_products.keys()) - set(previous_products.keys())
+        restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
+        out_of_stock_products = {title for title in previous_products if title in current_products and previous_products[title] and not current_products[title]}
+        
         for product in data['products']:
-            if product['title'] in new_products:
-                print(f"New product added: {product['title']}")
-                tweet(product)
-                break  # Exit the loop after the first iteration
+            title = product['title']
+            if title in new_products:
+                print(f"New product added: {title}")
+                #tweet(product, "NEW PRODUCT")
+            elif title in restocked_products:
+                print(f"Product back in stock: {title}")
+                #tweet(product, "BACK IN STOCK")
+            elif title in out_of_stock_products:
+                print(f"Product out of stock: {title}")
+                #tweet(product, "OUT OF STOCK")
         
-        previous_products = current_products
+        write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
