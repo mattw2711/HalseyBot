@@ -26,8 +26,8 @@ blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING
 container_client = blob_service_client.get_container_client('merchbotproducts')
 
 # Set up tweepy client for OAuth 2.0 User Context
-client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET)
-auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET_KEY, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET, wait_on_rate_limit=True)
+auth = tweepy.OAuth2BearerHandler(BEARER_TOKEN)
 api = tweepy.API(auth, wait_on_rate_limit=True)
 
 
@@ -83,8 +83,7 @@ def check_for_new_products():
         
         for product in data['products']:
             title = product['title']
-            tweet(product, "OUT OF STOCK")
-            break
+            # tweet(product, "TESTING")
             if title in new_products and product['variants'][0]['available']:
                 print(f"New product added: {title}")
                 tweet(product, "NEW PRODUCT")
@@ -98,7 +97,6 @@ def check_for_new_products():
                 print(f"Product out of stock: {title}")
                 tweet(product, "OUT OF STOCK")
             
-        
         write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
