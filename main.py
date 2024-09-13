@@ -84,6 +84,7 @@ def check_for_new_products():
         for product in data['products']:
             title = product['title']
             # tweet(product, "TESTING")
+            # break 
             if title in new_products and product['variants'][0]['available']:
                 print(f"New product added: {title}")
                 tweet(product, "NEW PRODUCT")
