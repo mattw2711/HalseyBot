@@ -68,6 +68,8 @@ def check_for_new_products():
         restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
         out_of_stock_products = {title for title in previous_products if title in current_products and previous_products[title] and not current_products[title]}
         
+
+
         for product in new_products:
             state = product['variants'][0]['available']
             title = product['title']
@@ -78,13 +80,14 @@ def check_for_new_products():
                 print(f"Product out of stock: {title}")
                 tweet(product, "OUT OF STOCK")
 
-        for product in restocked_products:
-            title = product['title']
+        for title in restocked_products:
+            product = current_products[title]
             print(f"Product back in stock: {title}")
+            print(product)
             tweet(product, "BACK IN STOCK")
 
-        for product in out_of_stock_products:
-            title = product['title']
+        for title in out_of_stock_products:
+            product = current_products[title]
             print(f"Product out of stock: {title}")
             tweet(product, "OUT OF STOCK")
         
