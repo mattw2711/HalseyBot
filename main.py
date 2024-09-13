@@ -3,7 +3,7 @@ import time
 import tweepy
 import csv
 import os
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
+from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
 import json
 
@@ -11,18 +11,18 @@ import json
 url = 'https://www.halseymusicstore.eu/products.json'
 previous_products_file = 'previous_products.csv'
 
-# Twitter API credentials
-API_KEY = os.getenv('API_KEY')
-API_SECRET_KEY = os.getenv('API_SECRET_KEY')
-ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
-ACCESS_TOKEN_SECRET = os.getenv('ACCESS_TOKEN_SECRET')
-BEARER_TOKEN = os.getenv('BEARER_TOKEN')
+API_KEY = 'dLJWJ0dWT2mgMWaXjME8dpFVs'
+API_SECRET_KEY = 'z0zJhhwXuik6Zm7yHhBNMrhglhkosfU9L3XkLjZzhNv6oxwWQh'
+ACCESS_TOKEN = '1834273643955732480-UG8VZaBsDrpBaOFx6hS1xVEWhHohVD'
+ACCESS_TOKEN_SECRET = 'JmvFjvNVR7bge44QZsiiHXyLIjFdCZ0tYc5ilTwZPUMCz'
+BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAAVwvwEAAAAAdQ9g4SyfyGWUgrw8UqBYsj7Q0VE%3D0J2fZ2zMEhLbScoWhbIlHy7vgk0Y6wwZ1DqLd1kRNx2srQXMwS'
+CLIENT_ID = 'dVltRU5SZ1pHNndqVWwtSmtMekU6MTpjaQ'
+CLIENT_SECRET = 'WtPk6ayBLUDPxpQUn_dHiHE3a8hpfvdSdAiqDCtifJiizL_pGX'
 
-account_url = "https://halseybot9e83.blob.core.windows.net"
-default_credential = DefaultAzureCredential()
+CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net"
 
 # Create the BlobServiceClient object
-blob_service_client = BlobServiceClient(account_url, credential=default_credential)
+blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING)
 container_client = blob_service_client.get_container_client('merchbotproducts')
 
 # Set up tweepy client for OAuth 2.0 User Context
@@ -65,7 +65,7 @@ def tweet(product, status):
 
         print(f"Tweeted: {tweet_text}")
         print(json.dumps(response.data, indent=4, sort_keys=True))
-    except Exception as e:
+    except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
 def check_for_new_products():
@@ -83,18 +83,21 @@ def check_for_new_products():
         
         for product in data['products']:
             title = product['title']
+            tweet(product, "OUT OF STOCK")
+            break
             if title in new_products and product['variants'][0]['available']:
                 print(f"New product added: {title}")
-                #tweet(product, "NEW PRODUCT")
+                tweet(product, "NEW PRODUCT")
             elif title in new_products and not product['variants'][0]['available']:
                 print(f"New product added but out of stock: {title}")
-                #tweet(product, "NEW PRODUCT (OUT OF STOCK)")
+                tweet(product, "NEW PRODUCT (OUT OF STOCK)")
             elif title in restocked_products:
                 print(f"Product back in stock: {title}")
-                #tweet(product, "BACK IN STOCK")
+                tweet(product, "BACK IN STOCK")
             elif title in out_of_stock_products:
                 print(f"Product out of stock: {title}")
-                #tweet(product, "OUT OF STOCK")
+                tweet(product, "OUT OF STOCK")
+            
         
         write_current_products(previous_products_file, current_products)
     except requests.RequestException as e:

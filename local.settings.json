@@ -7,6 +7,7 @@
     "API_SECRET_KEY": "5wRguMrjCewzcKIw2fXLez9FgT0Ljb4IgOpknhNjCr9a72Fz2p",
     "ACCESS_TOKEN": "1834273643955732480-PzuN7oQWNOOEKkEwXJZMnjOmBrQejm",
     "ACCESS_TOKEN_SECRET": "QQRtYN4ULXxxdwqVVw9HpSPGmgRqu69nXUGMlWHY6lVdh",
+    "CONNECTION_STRING": "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net",
     "BEARER_TOKEN": "AAAAAAAAAAAAAAAAAAAAAAVwvwEAAAAAtaLP8Hxyk2yd096YrUXSxfAUb9M%3Dz1bY7dweFgrbLeaoTlQiaMLiHd8UxJmaSfFGR43K5tisfgA0Qs"
   }
 }
