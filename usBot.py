@@ -8,16 +8,16 @@ from azure.identity import DefaultAzureCredential
 import json
 
 # URL to fetch products
-url = 'https://www.halseymusicstore.eu/products.json'
-previous_products_file = 'previous_products.csv'
+url = 'https://www.halseymusicstore.com/products.json'
+previous_products_fileUS = 'previous_productsUS.csv'
 
-API_KEY = 'dLJWJ0dWT2mgMWaXjME8dpFVs'
-API_SECRET_KEY = 'z0zJhhwXuik6Zm7yHhBNMrhglhkosfU9L3XkLjZzhNv6oxwWQh'
-ACCESS_TOKEN = '1834273643955732480-UG8VZaBsDrpBaOFx6hS1xVEWhHohVD'
-ACCESS_TOKEN_SECRET = 'JmvFjvNVR7bge44QZsiiHXyLIjFdCZ0tYc5ilTwZPUMCz'
-BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAAVwvwEAAAAAdQ9g4SyfyGWUgrw8UqBYsj7Q0VE%3D0J2fZ2zMEhLbScoWhbIlHy7vgk0Y6wwZ1DqLd1kRNx2srQXMwS'
-CLIENT_ID = 'dVltRU5SZ1pHNndqVWwtSmtMekU6MTpjaQ'
-CLIENT_SECRET = 'WtPk6ayBLUDPxpQUn_dHiHE3a8hpfvdSdAiqDCtifJiizL_pGX'
+API_KEY = '6a0QlOiSUGsMlVDi75W3HWH2M'
+API_SECRET_KEY = 'hqAHoYz49xjjQhoKFaazs5kX7Nmph8SC2H1p0NP9oR49lGPsDJ'
+ACCESS_TOKEN = '1834716671203737600-F6MwqGtxFHXtltf0RHdNVYrtGrUwe1'
+ACCESS_TOKEN_SECRET = 'NqzxDbkkuhqTPWQfyLacsjJya87KcCNj0SnlYoqxX75BT'
+BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAICMvwEAAAAAHiJA3scm1WvEHEklsabV2AX2XAE%3DxN3UeToHNvqzVGRjALEeFGKMjWhEft8fyWjIG6coF6hODKz2OR'
+CLIENT_ID = 'V1BjT3pTam5uclp3QjN2c3dpTk86MTpjaQ'
+CLIENT_SECRET = 'rPGQ8G76zi8uuM8klZleHMZRG2d4FESKw65Yk4t-7q43aFuofH'
 
 CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net"
 
@@ -31,7 +31,7 @@ auth = tweepy.OAuth2BearerHandler(BEARER_TOKEN)
 api = tweepy.API(auth, wait_on_rate_limit=True)
 
 
-def read_previous_products(file_path):
+def read_previous_productsUS(file_path):
     blob_client = container_client.get_blob_client(os.path.basename(file_path))
     if blob_client.exists():
         try:
@@ -44,7 +44,7 @@ def read_previous_products(file_path):
             return {}
     return {}
 
-def write_current_products(file_path, products):
+def write_current_productsUS(file_path, products):
     # Write products to a CSV file
     with open(file_path, "w", newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -58,11 +58,11 @@ def write_current_products(file_path, products):
     print(f"{file_path} uploaded to Azure Blob Storage.")
 
 
-def tweet(product, status):
+def tweetUS(product, status):
     try:
         title = product['title'].title()
         price = product['variants'][0]['price']
-        link = f"https://www.halseymusicstore.eu/products/{product['handle']}"
+        link = f"https://www.halseymusicstore.com/products/{product['handle']}"
         tweet_text = f"🚨 {status.upper()} 🚨\n{title} - €{price}\n🔗 {link}"
         
         response = client.create_tweet(text=tweet_text)
@@ -75,8 +75,8 @@ def tweet(product, status):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
-def check_for_new_products():
-    previous_products = read_previous_products(previous_products_file)
+def check_for_new_productsUS():
+    previous_products = read_previous_productsUS(previous_products_fileUS)
     try:
         r = requests.get(url)
         r.raise_for_status()  # Raise an HTTPError for bad responses
@@ -90,24 +90,22 @@ def check_for_new_products():
         
         for product in data['products']:
             title = product['title']
-            tweet(product, "TESTING")
-            break 
             if title in new_products and product['variants'][0]['available']:
                 print(f"New product added: {title}")
-                tweet(product, "NEW PRODUCT")
+                tweetUS(product, "NEW PRODUCT")
             elif title in new_products and not product['variants'][0]['available']:
                 print(f"New product added but out of stock: {title}")
-                tweet(product, "NEW PRODUCT (OUT OF STOCK)")
+                tweetUS(product, "NEW PRODUCT (OUT OF STOCK)")
             elif title in restocked_products:
                 print(f"Product back in stock: {title}")
-                tweet(product, "BACK IN STOCK")
+                tweetUS(product, "BACK IN STOCK")
             elif title in out_of_stock_products:
                 print(f"Product out of stock: {title}")
-                tweet(product, "OUT OF STOCK")
+                tweetUS(product, "OUT OF STOCK")
             
-        write_current_products(previous_products_file, current_products)
+        write_current_productsUS(previous_products_fileUS, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
 if __name__ == '__main__':
-    check_for_new_products()
+    check_for_new_productsUS()
