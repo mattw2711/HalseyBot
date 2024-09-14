@@ -2,6 +2,7 @@ import requests
 import time
 import tweepy
 import csv
+import io
 import os
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
@@ -45,16 +46,21 @@ def read_previous_products(file_path):
     return {}
 
 def write_current_products(file_path, products):
-    # Write products to a CSV file
-    with open(file_path, "w", newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        for title, available in products.items():
-            writer.writerow([title, available])
-
-    # Upload the file to Azure Blob Storage
+    # Create an in-memory buffer
+    output = io.StringIO()
+    
+    # Write products to the in-memory buffer as CSV
+    writer = csv.writer(output)
+    for title, available in products.items():
+        writer.writerow([title, available])
+    
+    # Get the CSV content from the buffer
+    csv_content = output.getvalue()
+    output.close()
+    
+    # Upload the CSV content to Azure Blob Storage
     blob_client = container_client.get_blob_client(os.path.basename(file_path))
-    with open(file_path, "rb") as data:
-        blob_client.upload_blob(data, overwrite=True)
+    blob_client.upload_blob(csv_content, overwrite=True)
     print(f"{file_path} uploaded to Azure Blob Storage.")
 
 
@@ -89,9 +95,7 @@ def check_for_new_products():
         out_of_stock_products = {title for title in previous_products if title in current_products and previous_products[title] and not current_products[title]}
         
         for product in data['products']:
-            title = product['title']
-            tweet(product, "TESTING")
-            break 
+            title = product['title'] 
             if title in new_products and product['variants'][0]['available']:
                 print(f"New product added: {title}")
                 tweet(product, "NEW PRODUCT")

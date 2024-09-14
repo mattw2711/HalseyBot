@@ -6,6 +6,7 @@ import os
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
 import json
+import io
 
 # URL to fetch products
 url = 'https://www.halseymusicstore.com/products.json'
@@ -45,16 +46,21 @@ def read_previous_productsUS(file_path):
     return {}
 
 def write_current_productsUS(file_path, products):
-    # Write products to a CSV file
-    with open(file_path, "w", newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        for title, available in products.items():
-            writer.writerow([title, available])
-
-    # Upload the file to Azure Blob Storage
+    # Create an in-memory buffer
+    output = io.StringIO()
+    
+    # Write products to the in-memory buffer as CSV
+    writer = csv.writer(output)
+    for title, available in products.items():
+        writer.writerow([title, available])
+    
+    # Get the CSV content from the buffer
+    csv_content = output.getvalue()
+    output.close()
+    
+    # Upload the CSV content to Azure Blob Storage
     blob_client = container_client.get_blob_client(os.path.basename(file_path))
-    with open(file_path, "rb") as data:
-        blob_client.upload_blob(data, overwrite=True)
+    blob_client.upload_blob(csv_content, overwrite=True)
     print(f"{file_path} uploaded to Azure Blob Storage.")
 
 
@@ -63,7 +69,7 @@ def tweetUS(product, status):
         title = product['title'].title()
         price = product['variants'][0]['price']
         link = f"https://www.halseymusicstore.com/products/{product['handle']}"
-        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - €{price}\n🔗 {link}"
+        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - ${price}\n🔗 {link}"
         
         response = client.create_tweet(text=tweet_text)
 
