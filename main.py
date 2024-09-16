@@ -2,34 +2,27 @@ import requests
 import time
 import tweepy
 import csv
+import io
 import os
-from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
 import json
+from blobStorage import initialiseBlobStorage
+from usInitialise import usInitialise
+from euInitialise import euInitialise
 
-# URL to fetch products
-url = 'https://www.halseymusicstore.eu/products.json'
-previous_products_file = 'previous_products.csv'
+# EU URL to fetch products
+url_EU = 'https://www.halseymusicstore.eu'
+previous_products_file_EU = 'previous_products.csv'
 
-API_KEY = 'dLJWJ0dWT2mgMWaXjME8dpFVs'
-API_SECRET_KEY = 'z0zJhhwXuik6Zm7yHhBNMrhglhkosfU9L3XkLjZzhNv6oxwWQh'
-ACCESS_TOKEN = '1834273643955732480-UG8VZaBsDrpBaOFx6hS1xVEWhHohVD'
-ACCESS_TOKEN_SECRET = 'JmvFjvNVR7bge44QZsiiHXyLIjFdCZ0tYc5ilTwZPUMCz'
-BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAAVwvwEAAAAAdQ9g4SyfyGWUgrw8UqBYsj7Q0VE%3D0J2fZ2zMEhLbScoWhbIlHy7vgk0Y6wwZ1DqLd1kRNx2srQXMwS'
-CLIENT_ID = 'dVltRU5SZ1pHNndqVWwtSmtMekU6MTpjaQ'
-CLIENT_SECRET = 'WtPk6ayBLUDPxpQUn_dHiHE3a8hpfvdSdAiqDCtifJiizL_pGX'
+# US Twitter API credentials
+url_US = 'https://www.halseymusicstore.com'
+previous_products_file_US = 'previous_productsUS.csv'
+
+global clientEU
+global clientUS
+global container_client
 
 CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net"
-
-# Create the BlobServiceClient object
-blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING)
-container_client = blob_service_client.get_container_client('merchbotproducts')
-
-# Set up tweepy client for OAuth 2.0 User Context
-client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET, wait_on_rate_limit=True)
-auth = tweepy.OAuth2BearerHandler(BEARER_TOKEN)
-api = tweepy.API(auth, wait_on_rate_limit=True)
-
 
 def read_previous_products(file_path):
     blob_client = container_client.get_blob_client(os.path.basename(file_path))
@@ -45,25 +38,36 @@ def read_previous_products(file_path):
     return {}
 
 def write_current_products(file_path, products):
-    # Write products to a CSV file
-    with open(file_path, "w", newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        for title, available in products.items():
-            writer.writerow([title, available])
-
-    # Upload the file to Azure Blob Storage
+    # Create an in-memory buffer
+    output = io.StringIO()
+    
+    # Write products to the in-memory buffer as CSV
+    writer = csv.writer(output)
+    for title, available in products.items():
+        writer.writerow([title, available])
+    
+    # Get the CSV content from the buffer
+    csv_content = output.getvalue()
+    output.close()
+    
+    # Upload the CSV content to Azure Blob Storage
     blob_client = container_client.get_blob_client(os.path.basename(file_path))
-    with open(file_path, "rb") as data:
-        blob_client.upload_blob(data, overwrite=True)
+    blob_client.upload_blob(csv_content, overwrite=True)
     print(f"{file_path} uploaded to Azure Blob Storage.")
 
 
-def tweet(product, status):
+def tweet(product, status, url):
     try:
         title = product['title'].title()
         price = product['variants'][0]['price']
-        link = f"https://www.halseymusicstore.eu/products/{product['handle']}"
-        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - €{price}\n🔗 {link}"
+        link = f"{url}/products/{product['handle']}"
+        if url == url_EU:
+            currency = "€"
+            client = clientEU
+        else:
+            currency = "$"
+            client = clientUS
+        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n🔗 {link}"
         
         response = client.create_tweet(text=tweet_text)
 
@@ -75,10 +79,10 @@ def tweet(product, status):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
-def check_for_new_products():
-    previous_products = read_previous_products(previous_products_file)
+def check_for_new_products(file_path, url):
+    previous_products = read_previous_products(file_path)
     try:
-        r = requests.get(url)
+        r = requests.get(url + "/products.json")
         r.raise_for_status()  # Raise an HTTPError for bad responses
         data = r.json()
         
@@ -87,27 +91,37 @@ def check_for_new_products():
         new_products = set(current_products.keys()) - set(previous_products.keys())
         restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
         out_of_stock_products = {title for title in previous_products if title in current_products and previous_products[title] and not current_products[title]}
-        
+
         for product in data['products']:
-            title = product['title']
-            tweet(product, "TESTING")
-            break 
+            title = product['title'] 
+            available = ""
             if title in new_products and product['variants'][0]['available']:
                 print(f"New product added: {title}")
-                tweet(product, "NEW PRODUCT")
+                tweet(product, "NEW PRODUCT", url)
             elif title in new_products and not product['variants'][0]['available']:
                 print(f"New product added but out of stock: {title}")
-                tweet(product, "NEW PRODUCT (OUT OF STOCK)")
+                tweet(product, "NEW PRODUCT (OUT OF STOCK)", url)
             elif title in restocked_products:
                 print(f"Product back in stock: {title}")
-                tweet(product, "BACK IN STOCK")
+                tweet(product, "BACK IN STOCK", url)
             elif title in out_of_stock_products:
                 print(f"Product out of stock: {title}")
-                tweet(product, "OUT OF STOCK")
+                tweet(product, "OUT OF STOCK", url)
             
-        write_current_products(previous_products_file, current_products)
+        write_current_products(file_path, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
-if __name__ == '__main__':
-    check_for_new_products()
+def main():
+    global clientEU
+    global clientUS
+    global container_client
+
+    clientEU = euInitialise()
+    clientUS = usInitialise()
+    container_client = initialiseBlobStorage(CONNECTION_STRING)
+    check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
+    check_for_new_products(file_path=previous_products_file_US, url=url_US)
+
+if __name__ == "__main__":
+    main()
