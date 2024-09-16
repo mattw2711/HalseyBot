@@ -4,7 +4,6 @@ import tweepy
 import csv
 import io
 import os
-from azure.identity import DefaultAzureCredential
 import json
 from blobStorage import initialiseBlobStorage
 from usInitialise import usInitialise
