@@ -82,7 +82,7 @@ def tweet(product, status, url, variantNum):
         print(f"Error tweeting: {e}")
 
 def check_for_new_products(file_path, url):
-    previous_products = read_previous_products(file_path)
+    previous_products = read_previous_products(f ile_path)
     try:
         r = requests.get(url + "/products.json")
         r.raise_for_status()  # Raise an HTTPError for bad responses
@@ -94,6 +94,20 @@ def check_for_new_products(file_path, url):
             for i, variant in enumerate(item['variants']):
                 variant_title = f"{title} - {variant['title']}"
                 current_products[variant_title] = variant['available']
+
+        time.sleep(5)
+        r = requests.get(url + "/products.json")
+        r.raise_for_status()
+        data = r.json()
+        
+        for item in data['products']:
+            title = item['title']
+            for i, variant in enumerate(item['variants']):
+                variant_title = f"{title} - {variant['title']}"
+                current_products[variant_title] = variant['available']
+                # Log the rechecked availability status
+                print(f"Recheck: {variant_title} is {'available' if variant['available'] else 'not available'}")
+        
         
         new_products = set(current_products.keys()) - set(previous_products.keys())
         restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
