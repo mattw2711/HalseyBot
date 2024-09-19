@@ -55,10 +55,13 @@ def write_current_products(file_path, products):
     print(f"{file_path} uploaded to Azure Blob Storage.")
 
 
-def tweet(product, status, url):
+def tweet(product, status, url, variantNum):
     try:
-        title = product['title'].title()
-        price = product['variants'][0]['price']
+        if variantNum == 0:
+            title = product['title'].title()
+        else:
+            title = f"{product['title'].title()} - {product['variants'][variantNum]['title']}"
+        price = product['variants'][variantNum]['price']
         link = f"{url}/products/{product['handle']}"
         if url == url_EU:
             currency = "€"
@@ -73,8 +76,8 @@ def tweet(product, status, url):
         if response.errors:
             raise Exception(f"Request returned an error: {response.errors}")
 
-        print(f"Tweeted: {tweet_text}")
         print(json.dumps(response.data, indent=4, sort_keys=True))
+        print(f"Tweeted: {tweet_text}")
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
@@ -85,27 +88,33 @@ def check_for_new_products(file_path, url):
         r.raise_for_status()  # Raise an HTTPError for bad responses
         data = r.json()
         
-        current_products = {item['title']: item['variants'][0]['available'] for item in data['products']}
+        current_products = {}
+        for item in data['products']:
+            title = item['title']
+            for i, variant in enumerate(item['variants']):
+                variant_title = f"{title} - {variant['title']}"
+                current_products[variant_title] = variant['available']
         
         new_products = set(current_products.keys()) - set(previous_products.keys())
         restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
         out_of_stock_products = {title for title in previous_products if title in current_products and previous_products[title] and not current_products[title]}
 
-        for product in data['products']:
-            title = product['title'] 
-            available = ""
-            if title in new_products and product['variants'][0]['available']:
-                print(f"New product added: {title}")
-                tweet(product, "NEW PRODUCT", url)
-            elif title in new_products and not product['variants'][0]['available']:
-                print(f"New product added but out of stock: {title}")
-                tweet(product, "NEW PRODUCT (OUT OF STOCK)", url)
-            elif title in restocked_products:
-                print(f"Product back in stock: {title}")
-                tweet(product, "BACK IN STOCK", url)
-            elif title in out_of_stock_products:
-                print(f"Product out of stock: {title}")
-                tweet(product, "OUT OF STOCK", url)
+        for item in data['products']:
+            title = item['title']
+            for i, variant in enumerate(item['variants']):
+                variant_title = f"{title} - {variant['title']}"
+                if variant_title in new_products and current_products[variant_title]:
+                    print(f"New product added: {variant_title}")
+                    tweet(item, f"NEW PRODUCT", url, i)
+                elif variant_title in new_products and not current_products[variant_title]:
+                    print(f"New product added but out of stock: {variant_title}")
+                    tweet(item, f"NEW PRODUCT (OUT OF STOCK)", url, i)
+                elif variant_title in restocked_products:
+                    print(f"Product back in stock: {variant_title}")
+                    tweet(item, f"BACK IN STOCK", url, i)
+                elif variant_title in out_of_stock_products:
+                    print(f"Product out of stock: {variant_title}")
+                    tweet(item, f"OUT OF STOCK", url. i)
             
         write_current_products(file_path, current_products)
     except requests.RequestException as e:
