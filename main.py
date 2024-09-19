@@ -6,6 +6,7 @@ import io
 import os
 import json
 from blobStorage import initialiseBlobStorage
+from ukInitialise import ukInitialise
 from usInitialise import usInitialise
 from euInitialise import euInitialise
 
@@ -17,8 +18,13 @@ previous_products_file_EU = 'previous_products.csv'
 url_US = 'https://www.halseymusicstore.com'
 previous_products_file_US = 'previous_productsUS.csv'
 
+# UK Twitter API credentials
+url_UK = 'https://www.halseymusicstore.co.uk'
+previous_products_file_UK = 'previous_productsUK.csv'
+
 global clientEU
 global clientUS
+global clientUK
 global container_client
 
 CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net"
@@ -66,6 +72,9 @@ def tweet(product, status, url, variantNum):
         if url == url_EU:
             currency = "€"
             client = clientEU
+        elif url == url_UK:
+            currency = "£"
+            client = clientUK
         else:
             currency = "$"
             client = clientUS
@@ -82,7 +91,7 @@ def tweet(product, status, url, variantNum):
         print(f"Error tweeting: {e}")
 
 def check_for_new_products(file_path, url):
-    previous_products = read_previous_products(f ile_path)
+    previous_products = read_previous_products(file_path)
     try:
         r = requests.get(url + "/products.json")
         r.raise_for_status()  # Raise an HTTPError for bad responses
@@ -123,13 +132,16 @@ def check_for_new_products(file_path, url):
 def main():
     global clientEU
     global clientUS
+    global clientUK
     global container_client
 
     clientEU = euInitialise()
     clientUS = usInitialise()
+    clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
     check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
     check_for_new_products(file_path=previous_products_file_US, url=url_US)
+    check_for_new_products(file_path=previous_products_file_UK, url=url_UK)
 
 if __name__ == "__main__":
     main()
