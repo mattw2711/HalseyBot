@@ -5,6 +5,7 @@ import csv
 import io
 import os
 import json
+import asyncio
 from blobStorage import initialiseBlobStorage
 from ukInitialise import ukInitialise
 from usInitialise import usInitialise
@@ -90,7 +91,7 @@ def tweet(product, status, url, variantNum):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
-def check_for_new_products(file_path, url):
+async def check_for_new_products(file_path, url):
     previous_products = read_previous_products(file_path)
     try:
         r = requests.get(url + "/products.json")
@@ -129,7 +130,7 @@ def check_for_new_products(file_path, url):
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
-def main():
+async def main():
     global clientEU
     global clientUS
     global clientUK
@@ -139,9 +140,12 @@ def main():
     clientUS = usInitialise()
     clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
-    check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
-    check_for_new_products(file_path=previous_products_file_US, url=url_US)
-    check_for_new_products(file_path=previous_products_file_UK, url=url_UK)
+
+    await asyncio.gather(
+        check_for_new_products(file_path=previous_products_file_EU, url=url_EU),
+        check_for_new_products(file_path=previous_products_file_US, url=url_US),
+        check_for_new_products(file_path=previous_products_file_UK, url=url_UK)
+    )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
