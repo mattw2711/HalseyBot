@@ -57,7 +57,7 @@ def write_current_products(file_path, products):
 
 def tweet(product, status, url, variantNum):
     try:
-        if variantNum == 0:
+        if len(product['variants']) == 1:
             title = product['title'].title()
         else:
             title = f"{product['title'].title()} - {product['variants'][variantNum]['title']}"
