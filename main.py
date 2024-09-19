@@ -60,7 +60,7 @@ def tweet(product, status, url, variantNum):
         if len(product['variants']) == 1:
             title = product['title'].title()
         else:
-            title = f"{product['title'].title()} - {product['variants'][variantNum]['title']}"
+            title = f"{product['title']} - {product['variants'][variantNum]['title']}".title()
         price = product['variants'][variantNum]['price']
         link = f"{url}/products/{product['handle']}"
         if url == url_EU:
