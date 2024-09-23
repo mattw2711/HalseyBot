@@ -1,3 +1,4 @@
+asyncio==3.4.3
 azure-core==1.31.0
 azure-functions==1.20.0
 azure-identity==1.17.1
