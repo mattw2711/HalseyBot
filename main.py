@@ -126,7 +126,8 @@ async def check_for_new_products(file_path, url):
                     print(f"Product out of stock: {variant_title}")
                     tweet(item, f"OUT OF STOCK", url, i)
             
-        write_current_products(file_path, current_products)
+        if current_products != previous_products:
+            write_current_products(file_path, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
