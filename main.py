@@ -12,7 +12,7 @@ from euInitialise import euInitialise
 
 # EU URL to fetch products
 url_EU = 'https://www.halseymusicstore.eu'
-previous_products_file_EU = 'previous_products.csv'
+previous_products_file_EU = 'previous_productsEU.csv'
 
 # US Twitter API credentials
 url_US = 'https://www.halseymusicstore.com'
