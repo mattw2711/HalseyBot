@@ -5,20 +5,27 @@ import csv
 import io
 import os
 import json
+import asyncio
 from blobStorage import initialiseBlobStorage
+from ukInitialise import ukInitialise
 from usInitialise import usInitialise
 from euInitialise import euInitialise
 
 # EU URL to fetch products
 url_EU = 'https://www.halseymusicstore.eu'
-previous_products_file_EU = 'previous_products.csv'
+previous_products_file_EU = 'previous_productsEU.csv'
 
 # US Twitter API credentials
 url_US = 'https://www.halseymusicstore.com'
 previous_products_file_US = 'previous_productsUS.csv'
 
+# UK Twitter API credentials
+url_UK = 'https://www.halseymusicstore.co.uk'
+previous_products_file_UK = 'previous_productsUK.csv'
+
 global clientEU
 global clientUS
+global clientUK
 global container_client
 
 CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net"
@@ -57,15 +64,18 @@ def write_current_products(file_path, products):
 
 def tweet(product, status, url, variantNum):
     try:
-        if variantNum == 0:
+        if len(product['variants']) == 1:
             title = product['title'].title()
         else:
-            title = f"{product['title'].title()} - {product['variants'][variantNum]['title']}"
+            title = f"{product['title']} - {product['variants'][variantNum]['title']}".title()
         price = product['variants'][variantNum]['price']
         link = f"{url}/products/{product['handle']}"
         if url == url_EU:
             currency = "€"
             client = clientEU
+        elif url == url_UK:
+            currency = "£"
+            client = clientUK
         else:
             currency = "$"
             client = clientUS
@@ -81,7 +91,7 @@ def tweet(product, status, url, variantNum):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
-def check_for_new_products(file_path, url):
+async def check_for_new_products(file_path, url):
     previous_products = read_previous_products(file_path)
     try:
         r = requests.get(url + "/products.json")
@@ -114,22 +124,29 @@ def check_for_new_products(file_path, url):
                     tweet(item, f"BACK IN STOCK", url, i)
                 elif variant_title in out_of_stock_products:
                     print(f"Product out of stock: {variant_title}")
-                    tweet(item, f"OUT OF STOCK", url. i)
+                    tweet(item, f"OUT OF STOCK", url, i)
             
-        write_current_products(file_path, current_products)
+        if current_products != previous_products:
+            write_current_products(file_path, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
-def main():
+async def main():
     global clientEU
     global clientUS
+    global clientUK
     global container_client
 
     clientEU = euInitialise()
     clientUS = usInitialise()
+    clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
-    check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
-    check_for_new_products(file_path=previous_products_file_US, url=url_US)
+
+    await asyncio.gather(
+        check_for_new_products(file_path=previous_products_file_EU, url=url_EU),
+        check_for_new_products(file_path=previous_products_file_US, url=url_US),
+        check_for_new_products(file_path=previous_products_file_UK, url=url_UK)
+    )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
