@@ -69,7 +69,7 @@ def tweet(product, status, url, variantNum):
         else:
             title = f"{product['title']} - {product['variants'][variantNum]['title']}".title()
         price = product['variants'][variantNum]['price']
-        link = f"{url}/products/{product['handle']}"
+        link = f"{url}/cart/{product['variants'][variantNum]['id']}:1"
         if url == url_EU:
             currency = "€"
             client = clientEU
@@ -79,7 +79,7 @@ def tweet(product, status, url, variantNum):
         else:
             currency = "$"
             client = clientUS
-        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n🔗 {link}"
+        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n🔗 **Instant Checkout** \n{link}"
         
         response = client.create_tweet(text=tweet_text)
 
@@ -91,7 +91,7 @@ def tweet(product, status, url, variantNum):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
-async def check_for_new_products(file_path, url):
+def check_for_new_products(file_path, url):
     previous_products = read_previous_products(file_path)
     try:
         r = requests.get(url + "/products.json")
@@ -125,13 +125,14 @@ async def check_for_new_products(file_path, url):
                 elif variant_title in out_of_stock_products:
                     print(f"Product out of stock: {variant_title}")
                     tweet(item, f"OUT OF STOCK", url, i)
+            print(f"{url}/cart/{item['variants'][i]['id']}:1")
             
         if current_products != previous_products:
             write_current_products(file_path, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
-async def main():
+def main():
     global clientEU
     global clientUS
     global clientUK
@@ -142,11 +143,9 @@ async def main():
     clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
 
-    await asyncio.gather(
-        check_for_new_products(file_path=previous_products_file_EU, url=url_EU),
-        check_for_new_products(file_path=previous_products_file_US, url=url_US),
-        check_for_new_products(file_path=previous_products_file_UK, url=url_UK)
-    )
+    check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
+    check_for_new_products(file_path=previous_products_file_US, url=url_US)
+    check_for_new_products(file_path=previous_products_file_UK, url=url_UK)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
