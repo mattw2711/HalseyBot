@@ -62,14 +62,18 @@ def write_current_products(file_path, products):
     print(f"{file_path} uploaded to Azure Blob Storage.")
 
 
-def tweet(product, status, url, variantNum):
+def tweet(product, status, url):
     try:
-        if len(product['variants']) == 1:
-            title = product['title'].title()
+        title = product['title'].title()
+        handle = product['handle']
+
+        price = product['variants'][0]['price']
+
+        if 'Signed' in title:
+            link = f"Instant Checkout \n {url}/cart/{product['variants'][0]['id']}:1"
         else:
-            title = f"{product['title']} - {product['variants'][variantNum]['title']}".title()
-        price = product['variants'][variantNum]['price']
-        link = f"{url}/cart/{product['variants'][variantNum]['id']}:1"
+            link = f"{url}/products/{handle}"
+
         if url == url_EU:
             currency = "€"
             client = clientEU
@@ -79,7 +83,8 @@ def tweet(product, status, url, variantNum):
         else:
             currency = "$"
             client = clientUS
-        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n🔗 **Instant Checkout** \n{link}"
+
+        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n🔗 {link}"
         
         response = client.create_tweet(text=tweet_text)
 
@@ -91,7 +96,7 @@ def tweet(product, status, url, variantNum):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
-def check_for_new_products(file_path, url):
+async def check_for_new_products(file_path, url):
     previous_products = read_previous_products(file_path)
     try:
         r = requests.get(url + "/products.json")
@@ -101,38 +106,42 @@ def check_for_new_products(file_path, url):
         current_products = {}
         for item in data['products']:
             title = item['title']
-            for i, variant in enumerate(item['variants']):
-                variant_title = f"{title} - {variant['title']}"
-                current_products[variant_title] = variant['available']
+            current_products[title] = item['variants'][0]['available']
         
         new_products = set(current_products.keys()) - set(previous_products.keys())
         restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
         out_of_stock_products = {title for title in previous_products if title in current_products and previous_products[title] and not current_products[title]}
+        unchanged_products = {title for title in current_products if title in previous_products and previous_products[title] == current_products[title]}
+
 
         for item in data['products']:
             title = item['title']
-            for i, variant in enumerate(item['variants']):
-                variant_title = f"{title} - {variant['title']}"
-                if variant_title in new_products and current_products[variant_title]:
-                    print(f"New product added: {variant_title}")
-                    tweet(item, f"NEW PRODUCT", url, i)
-                elif variant_title in new_products and not current_products[variant_title]:
-                    print(f"New product added but out of stock: {variant_title}")
-                    tweet(item, f"NEW PRODUCT (OUT OF STOCK)", url, i)
-                elif variant_title in restocked_products:
-                    print(f"Product back in stock: {variant_title}")
-                    tweet(item, f"BACK IN STOCK", url, i)
-                elif variant_title in out_of_stock_products:
-                    print(f"Product out of stock: {variant_title}")
-                    tweet(item, f"OUT OF STOCK", url, i)
-            print(f"{url}/cart/{item['variants'][i]['id']}:1")
+            status = "" 
+            if title in unchanged_products:
+                #print(f"Product unchanged: {title}")
+                status = "UNCHANGED"
+            elif title in new_products and current_products[title]:
+                #print(f"New product added: {title}")
+                status = "NEW PRODUCT"
+            elif title in new_products and not current_products[title]:
+                #print(f"New product added but out of stock: {title}")
+                status = "NEW PRODUCT (OUT OF STOCK)"
+            elif title in restocked_products:
+                #print(f"Product back in stock: {title}")
+                status = "BACK IN STOCK"
+            elif title in out_of_stock_products:
+                #print(f"Product out of stock: {title}")
+                status = "OUT OF STOCK"
+
+            if status != 'UNCHANGED':
+                tweet(item, status, url)
             
         if current_products != previous_products:
             write_current_products(file_path, current_products)
     except requests.RequestException as e:
         print(f"Error fetching products: {e}")
 
-def main():
+async def main():
     global clientEU
     global clientUS
     global clientUK
@@ -143,9 +152,11 @@ def main():
     clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
 
-    check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
-    check_for_new_products(file_path=previous_products_file_US, url=url_US)
-    check_for_new_products(file_path=previous_products_file_UK, url=url_UK)
+    await asyncio.gather(
+        check_for_new_products(file_path=previous_products_file_US, url=url_US),
+        check_for_new_products(file_path=previous_products_file_UK, url=url_UK),
+        check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
+    )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
