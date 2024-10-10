@@ -70,10 +70,12 @@ def tweet(product, status, url):
 
         price = product['variants'][0]['price']
 
-        if 'Signed' in title:
-            link = f"Instant Checkout \n {url}/cart/{product['variants'][0]['id']}:1"
+        if status == 'OUT OF STOCK':
+            link = ''
+        elif 'Signed' in title:
+            link = f"🔗 Instant Checkout \n {url}/cart/{product['variants'][0]['id']}:1"
         else:
-            link = f"{url}/products/{handle}"
+            link = f"🔗 {url}/products/{handle}"
 
         if url == url_EU:
             currency = "€"
@@ -85,7 +87,7 @@ def tweet(product, status, url):
             currency = "$"
             client = clientUS
 
-        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n🔗 {link}"
+        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n{link}"
         
         response = client.create_tweet(text=tweet_text)
 
