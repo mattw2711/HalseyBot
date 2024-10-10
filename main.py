@@ -163,10 +163,9 @@ async def run_checks():
             check_for_new_products(file_path=previous_products_file_UK, url=url_UK),
             check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
         )
-        await asyncio.sleep(0.5)
-        # Check if a minute has passed
-        if asyncio.get_event_loop().time() - start_time > 59:
-            break 
+        await asyncio.sleep(0.5)  # Sleep for half a second
+        if asyncio.get_event_loop().time() - start_time > 58:
+            break
 
 def main():
     global clientEU
