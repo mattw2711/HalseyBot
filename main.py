@@ -6,6 +6,7 @@ import io
 import os
 import json
 import asyncio
+import aiohttp
 from blobStorage import initialiseBlobStorage
 from ukInitialise import ukInitialise
 from usInitialise import usInitialise
@@ -96,12 +97,21 @@ def tweet(product, status, url):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
+async def fetch_products(session, url):
+    async with session.get(url + "/products.json") as response:
+        response.raise_for_status()
+        return await response.json()
+
 async def check_for_new_products(file_path, url):
     previous_products = read_previous_products(file_path)
     try:
-        r = requests.get(url + "/products.json")
-        r.raise_for_status()  # Raise an HTTPError for bad responses
-        data = r.json()
+        async with aiohttp.ClientSession() as session:
+            data = await fetch_products(session, url)
+        
+        current_products = {}
+        for item in data['products']:
+            title = item['title']
+            current_products[title] = item['variants'][0]['available']
         
         current_products = {}
         for item in data['products']:
@@ -138,10 +148,25 @@ async def check_for_new_products(file_path, url):
             
         if current_products != previous_products:
             write_current_products(file_path, current_products)
-    except requests.RequestException as e:
+
+        print("ran" + url)
+    except aiohttp.ClientError as e:
         print(f"Error fetching products: {e}")
 
-async def main():
+async def run_checks():
+    start_time = asyncio.get_event_loop().time()
+    while True:
+        await asyncio.gather(
+            check_for_new_products(file_path=previous_products_file_US, url=url_US),
+            check_for_new_products(file_path=previous_products_file_UK, url=url_UK),
+            check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
+        )
+        await asyncio.sleep(0.5)
+        # Check if a minute has passed
+        if asyncio.get_event_loop().time() - start_time > 59:
+            break 
+
+def main():
     global clientEU
     global clientUS
     global clientUK
@@ -152,11 +177,7 @@ async def main():
     clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
 
-    await asyncio.gather(
-        check_for_new_products(file_path=previous_products_file_US, url=url_US),
-        check_for_new_products(file_path=previous_products_file_UK, url=url_UK),
-        check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
-    )
+    asyncio.run(run_checks())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
