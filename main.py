@@ -155,8 +155,7 @@ async def check_for_new_products(file_path, url):
     except aiohttp.ClientError as e:
         print(f"Error fetching products: {e}")
 
-async def run_checks():
-    start_time = asyncio.get_event_loop().time()
+async def run_checks(start_time):
     while True:
         await asyncio.gather(
             check_for_new_products(file_path=previous_products_file_US, url=url_US),
@@ -169,6 +168,7 @@ async def run_checks():
             break 
 
 def main():
+    start_time = asyncio.get_event_loop().time()
     global clientEU
     global clientUS
     global clientUK
@@ -179,7 +179,7 @@ def main():
     clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
 
-    asyncio.run(run_checks())
+    asyncio.run(run_checks(start_time))
 
 if __name__ == "__main__":
     main()
