@@ -113,12 +113,12 @@ async def check_for_new_products(file_path, url):
         current_products = {}
         for item in data['products']:
             title = item['title']
-            current_products[title] = item['variants'][0]['available']
+            current_products[title] = any(variant['available'] for variant in item['variants'])
         
         current_products = {}
         for item in data['products']:
             title = item['title']
-            current_products[title] = item['variants'][0]['available']
+            current_products[title] = any(variant['available'] for variant in item['variants'])
         
         new_products = set(current_products.keys()) - set(previous_products.keys())
         restocked_products = {title for title in current_products if title in previous_products and not previous_products[title] and current_products[title]}
