@@ -11,7 +11,9 @@ from blobStorage import initialiseBlobStorage
 from ukInitialise import ukInitialise
 from usInitialise import usInitialise
 from euInitialise import euInitialise
+from PIL import Image
 from atproto import Client
+from io import BytesIO
 
 # EU URL to fetch products
 url_EU = 'https://www.halseymusicstore.eu'
@@ -113,56 +115,46 @@ def post_to_bluesky(product, status, url):
     
     title = product['title'].title()
     handle = product['handle']
-
     price = product['variants'][0]['price']
+    imageURL = product['images'][0]['src'] if product['images'] else 'https://via.placeholder.com/150'
 
     if status == 'OUT OF STOCK':
         link = ''
-        linkText = ''
     elif 'Signed' in title:
         link = f"{url}/cart/{product['variants'][0]['id']}:1"
-        linkText = "🔗 Instant Checkout"
+        imageTitle = f"🔗 Instant Checkout"
+        imageDescription = f"Get {title}"
     else:
         link = f"{url}/products/{handle}"
-        linkText = "🔗 Product Page"
+        imageTitle = f"🔗 Product Page"
+        imageDescription = f"Get {title}"
 
     if url == url_EU:
         currency = "€"
-        header = "EU Store Update"
+        header = "EU Store"
     elif url == url_UK:
         currency = "£"
-        header = "UK Store Update"
+        header = "UK Store"
     else:
         currency = "$"
-        header = "US Store Update"
+        header = "US Store"
 
-    post_text = f"🚨 {header} - {status.upper()} 🚨 \n{title} - {currency}{price}\n{linkText}"
-
-    # Calculate byte positions for the link text
-    byte_start = len(post_text.encode('utf-8')) - len(linkText.encode('utf-8'))
-    byte_end = len(post_text.encode('utf-8'))
+    post_text = f"🚨 {header} - {status.title()} 🚨 \n{title} - {currency}{price}"
 
     if link:
-        facets = [
-            {
-                "index": {
-                    "byteStart": byte_start,
-                    "byteEnd": byte_end
-                },
-                "features": [
-                    {
-                        "$type": "app.bsky.richtext.facet#link",
-                        "uri": link,
-                        "preview": True
-                    }
-                ]
+        embed = {
+            "$type": "app.bsky.embed.external",
+            "external": {
+                "uri": link,
+                "title": imageTitle,
+                "description": imageDescription,
             }
-        ]
+        }
     else:
-        facets = []
+        embed = None
         
     try:
-        response = client.send_post(text=post_text, facets=facets)
+        response = client.send_post(text=post_text, embed=embed)
         response_dict = response.__dict__
         print(json.dumps(response_dict, indent=4, sort_keys=True))
         print(f"Posted to Bluesky: {post_text}")
@@ -215,7 +207,6 @@ async def check_for_new_products(file_path, url):
                 #print(f"Product out of stock: {title}")
                 status = "OUT OF STOCK"
 
-            post_to_bluesky(item, status, url)
             if status != 'UNCHANGED':
                 tweet(item, status, url)
                 post_to_bluesky(item, status, url)
