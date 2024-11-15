@@ -11,6 +11,7 @@ from blobStorage import initialiseBlobStorage
 from ukInitialise import ukInitialise
 from usInitialise import usInitialise
 from euInitialise import euInitialise
+from atproto import Client
 
 # EU URL to fetch products
 url_EU = 'https://www.halseymusicstore.eu'
@@ -99,6 +100,75 @@ def tweet(product, status, url):
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
 
+def post_to_bluesky(product, status, url):
+    client = Client()
+
+    # Log in and obtain a session token
+    try:
+        client.login("halseywatch.bsky.social", "B1tterLemonJu!ce")
+        print("Logged in successfully")
+    except Exception as e:
+        print(f"Error logging in: {e}")
+        return
+    
+    title = product['title'].title()
+    handle = product['handle']
+
+    price = product['variants'][0]['price']
+
+    if status == 'OUT OF STOCK':
+        link = ''
+        linkText = ''
+    elif 'Signed' in title:
+        link = f"{url}/cart/{product['variants'][0]['id']}:1"
+        linkText = "🔗 Instant Checkout"
+    else:
+        link = f"{url}/products/{handle}"
+        linkText = "🔗 Product Page"
+
+    if url == url_EU:
+        currency = "€"
+        header = "EU Store Update"
+    elif url == url_UK:
+        currency = "£"
+        header = "UK Store Update"
+    else:
+        currency = "$"
+        header = "US Store Update"
+
+    post_text = f"🚨 {header} - {status.upper()} 🚨 \n{title} - {currency}{price}\n{linkText}"
+
+    # Calculate byte positions for the link text
+    byte_start = len(post_text.encode('utf-8')) - len(linkText.encode('utf-8'))
+    byte_end = len(post_text.encode('utf-8'))
+
+    if link:
+        facets = [
+            {
+                "index": {
+                    "byteStart": byte_start,
+                    "byteEnd": byte_end
+                },
+                "features": [
+                    {
+                        "$type": "app.bsky.richtext.facet#link",
+                        "uri": link,
+                        "preview": True
+                    }
+                ]
+            }
+        ]
+    else:
+        facets = []
+        
+    try:
+        response = client.send_post(text=post_text, facets=facets)
+        response_dict = response.__dict__
+        print(json.dumps(response_dict, indent=4, sort_keys=True))
+        print(f"Posted to Bluesky: {post_text}")
+    except Exception as e:
+        print(f"Error posting to Bluesky: {e}")
+
 async def fetch_products(session, url):
     async with session.get(url + "/products.json") as response:
         response.raise_for_status()
@@ -145,8 +215,10 @@ async def check_for_new_products(file_path, url):
                 #print(f"Product out of stock: {title}")
                 status = "OUT OF STOCK"
 
+            post_to_bluesky(item, status, url)
             if status != 'UNCHANGED':
                 tweet(item, status, url)
+                post_to_bluesky(item, status, url)
             
         if current_products != previous_products:
             write_current_products(file_path, current_products)
@@ -167,6 +239,21 @@ async def run_checks():
         if asyncio.get_event_loop().time() - start_time > 58:
             break
 
+def testBlueSky():
+    client = Client()
+    try:
+        client.login("halseywatch.bsky.social", "B1tterLemonJu!ce")
+        print("Logged in successfully")
+    except Exception as e:
+        print(f"Error logging in: {e}")
+        return
+    
+    try:
+        client.send_post(text="This is a test post for Bluesky Bots! If you see this we are live!!!")
+        print("Post created successfully!")
+    except Exception as e:
+        print(f"Error creating post: {e}")
+
 def main():
     global clientEU
     global clientUS
@@ -177,6 +264,8 @@ def main():
     clientUS = usInitialise()
     clientUK = ukInitialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
+
+    #testBlueSky()
 
     asyncio.run(run_checks())
 
