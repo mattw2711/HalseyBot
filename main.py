@@ -1,5 +1,3 @@
-import requests
-import time
 import tweepy
 import csv
 import io
@@ -13,7 +11,6 @@ from usInitialise import usInitialise
 from euInitialise import euInitialise
 from PIL import Image
 from atproto import Client
-from io import BytesIO
 
 # EU URL to fetch products
 url_EU = 'https://www.halseymusicstore.eu'
