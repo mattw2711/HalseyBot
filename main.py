@@ -5,12 +5,26 @@ import os
 import json
 import asyncio
 import aiohttp
+import tweepy
 from blobStorage import initialiseBlobStorage
-from ukInitialise import ukInitialise
-from usInitialise import usInitialise
-from euInitialise import euInitialise
 from PIL import Image
-from atproto import Client
+
+def initialise():
+    # Halsey Watch Twitter API credentials
+    API_KEY = 'aGVBNdbIY8D96yxXP7EkdH6Zg'
+    API_SECRET_KEY = 'tzqSn5f9nzL8eTEuuhOu0GETbo4KdDaZDhl9MjVgKoHYaET9lI'
+    ACCESS_TOKEN = '1844430975293636608-6K4TA9SwUchC4jYLmLF3TbD7RVrk0t'
+    ACCESS_TOKEN_SECRET = 'sGY8mvVzIYeVvA50nn882uCy8XJfDa4BGpNzHlpEAHTAn'
+    BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAFza0QEAAAAA8JseWi2gpHki0Y9VWMwh9hBTEnU%3DeRWWhqIe0nMn8v12jEI75nmnIpk9BtNM2FoVyeNM6HmFnB4h9A'
+    CLIENT_ID = 'Wk5EZXA1a0JvdGtXT3VBWWl0blQ6MTpjaQ'
+    CLIENT_SECRET = 'Fyg1pbu0fcKW1ztDlxGC2MKajIKSxqC3HSmsd5sHBApM809p6O'
+
+    # Set up tweepy client for OAuth 2.0 User Context
+    client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET, wait_on_rate_limit=True)
+    auth = tweepy.OAuth2BearerHandler(BEARER_TOKEN)
+    api = tweepy.API(auth, wait_on_rate_limit=True)
+
+    return client
 
 # EU URL to fetch products
 url_EU = 'https://www.halseymusicstore.eu'
@@ -24,10 +38,9 @@ previous_products_file_US = 'previous_productsUS.csv'
 url_UK = 'https://www.halseymusicstore.co.uk'
 previous_products_file_UK = 'previous_productsUK.csv'
 
-global clientEU
-global clientUS
-global clientUK
 global container_client
+global halseyWatch
+
 
 CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net"
 
@@ -79,84 +92,26 @@ def tweet(product, status, url):
 
         if url == url_EU:
             currency = "€"
-            client = clientEU
+            flag = "🇪🇺"
+
         elif url == url_UK:
             currency = "£"
-            client = clientUK
+            flag = "🇬🇧"
         else:
             currency = "$"
-            client = clientUS
+            flag = "🇺🇸"
 
-        tweet_text = f"🚨 {status.upper()} 🚨\n{title} - {currency}{price}\n{link}"
+        tweet_text = f"{flag} {status.upper()} {flag}\n{title} - {currency}{price}\n{link}"
+        test_text = f"🛠️ TESTING 🛠️\n{title} - {currency}{price}\n{link}"
         
-        response = client.create_tweet(text=tweet_text)
+        response = halseyWatch.create_tweet(text=tweet_text)
 
         if response.errors:
             raise Exception(f"Request returned an error: {response.errors}")
 
-        print(json.dumps(response.data, indent=4, sort_keys=True))
-        print(f"Tweeted: {tweet_text}")
+        print(f"Tweeted: {test_text}")
     except tweepy.TweepyException as e:
         print(f"Error tweeting: {e}")
-
-def post_to_bluesky(product, status, url):
-    client = Client()
-
-    # Log in and obtain a session token
-    try:
-        client.login("halseywatch.bsky.social", "B1tterLemonJu!ce")
-        print("Logged in successfully")
-    except Exception as e:
-        print(f"Error logging in: {e}")
-        return
-    
-    title = product['title'].title()
-    handle = product['handle']
-    price = product['variants'][0]['price']
-    imageURL = product['images'][0]['src'] if product['images'] else 'https://via.placeholder.com/150'
-
-    if status == 'OUT OF STOCK':
-        link = ''
-    elif 'Signed' in title:
-        link = f"{url}/cart/{product['variants'][0]['id']}:1"
-        imageTitle = f"🔗 Instant Checkout"
-        imageDescription = f"Get {title}"
-    else:
-        link = f"{url}/products/{handle}"
-        imageTitle = f"🔗 Product Page"
-        imageDescription = f"Get {title}"
-
-    if url == url_EU:
-        currency = "€"
-        header = "EU Store"
-    elif url == url_UK:
-        currency = "£"
-        header = "UK Store"
-    else:
-        currency = "$"
-        header = "US Store"
-
-    post_text = f"🚨 {header} - {status.title()} 🚨 \n{title} - {currency}{price}"
-
-    if link:
-        embed = {
-            "$type": "app.bsky.embed.external",
-            "external": {
-                "uri": link,
-                "title": imageTitle,
-                "description": imageDescription,
-            }
-        }
-    else:
-        embed = None
-        
-    try:
-        response = client.send_post(text=post_text, embed=embed)
-        response_dict = response.__dict__
-        print(json.dumps(response_dict, indent=4, sort_keys=True))
-        print(f"Posted to Bluesky: {post_text}")
-    except Exception as e:
-        print(f"Error posting to Bluesky: {e}")
 
 async def fetch_products(session, url):
     async with session.get(url + "/products.json") as response:
@@ -204,12 +159,11 @@ async def check_for_new_products(file_path, url):
                 #print(f"Product out of stock: {title}")
                 status = "OUT OF STOCK"
 
-            if status != 'UNCHANGED':
-                tweet(item, status, url)
-                post_to_bluesky(item, status, url)
+            if status != "UNCHANGED":
+               tweet(item, status, url)
             
-        if current_products != previous_products:
-            write_current_products(file_path, current_products)
+        #if current_products != previous_products:
+        write_current_products(file_path, current_products)
 
         print("ran" + url)
     except aiohttp.ClientError as e:
@@ -227,33 +181,13 @@ async def run_checks():
         if asyncio.get_event_loop().time() - start_time > 58:
             break
 
-def testBlueSky():
-    client = Client()
-    try:
-        client.login("halseywatch.bsky.social", "B1tterLemonJu!ce")
-        print("Logged in successfully")
-    except Exception as e:
-        print(f"Error logging in: {e}")
-        return
-    
-    try:
-        client.send_post(text="This is a test post for Bluesky Bots! If you see this we are live!!!")
-        print("Post created successfully!")
-    except Exception as e:
-        print(f"Error creating post: {e}")
-
 def main():
-    global clientEU
-    global clientUS
-    global clientUK
     global container_client
+    global halseyWatch
 
-    clientEU = euInitialise()
-    clientUS = usInitialise()
-    clientUK = ukInitialise()
+    halseyWatch = initialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
 
-    #testBlueSky()
 
     asyncio.run(run_checks())
 
