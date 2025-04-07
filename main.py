@@ -16,25 +16,21 @@ def initialise():
     ACCESS_TOKEN = '1844430975293636608-6K4TA9SwUchC4jYLmLF3TbD7RVrk0t'
     ACCESS_TOKEN_SECRET = 'sGY8mvVzIYeVvA50nn882uCy8XJfDa4BGpNzHlpEAHTAn'
     BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAFza0QEAAAAA8JseWi2gpHki0Y9VWMwh9hBTEnU%3DeRWWhqIe0nMn8v12jEI75nmnIpk9BtNM2FoVyeNM6HmFnB4h9A'
-    CLIENT_ID = 'Wk5EZXA1a0JvdGtXT3VBWWl0blQ6MTpjaQ'
-    CLIENT_SECRET = 'Fyg1pbu0fcKW1ztDlxGC2MKajIKSxqC3HSmsd5sHBApM809p6O'
 
     # Set up tweepy client for OAuth 2.0 User Context
     client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET, wait_on_rate_limit=True)
-    auth = tweepy.OAuth2BearerHandler(BEARER_TOKEN)
-    api = tweepy.API(auth, wait_on_rate_limit=True)
 
     return client
 
-# EU URL to fetch products
+# EU URL
 url_EU = 'https://www.halseymusicstore.eu'
 previous_products_file_EU = 'previous_productsEU.csv'
 
-# US Twitter API credentials
+# US URL
 url_US = 'https://www.halseymusicstore.com'
 previous_products_file_US = 'previous_productsUS.csv'
 
-# UK Twitter API credentials
+# UK URL
 url_UK = 'https://www.halseymusicstore.co.uk'
 previous_products_file_UK = 'previous_productsUK.csv'
 
