@@ -2,12 +2,10 @@ import tweepy
 import csv
 import io
 import os
-import json
 import asyncio
 import aiohttp
 import tweepy
 from blobStorage import initialiseBlobStorage
-from PIL import Image
 
 def initialise():
     # Halsey Watch Twitter API credentials
@@ -99,8 +97,9 @@ def tweet(product, status, url):
 
         tweet_text = f"{flag} {status.upper()} {flag}\n{title} - {currency}{price}\n{link}"
         test_text = f"🛠️ TESTING 🛠️\n{title} - {currency}{price}\n{link}"
-        
+
         response = halseyWatch.create_tweet(text=tweet_text)
+        
 
         if response.errors:
             raise Exception(f"Request returned an error: {response.errors}")
@@ -155,11 +154,13 @@ async def check_for_new_products(file_path, url):
                 #print(f"Product out of stock: {title}")
                 status = "OUT OF STOCK"
 
+            print(status)
+
             if status != "UNCHANGED":
                tweet(item, status, url)
             
-        #if current_products != previous_products:
-        write_current_products(file_path, current_products)
+        if current_products != previous_products:
+            write_current_products(file_path, current_products)
 
         print("ran" + url)
     except aiohttp.ClientError as e:
