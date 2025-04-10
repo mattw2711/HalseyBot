@@ -5,15 +5,27 @@ import os
 import asyncio
 import aiohttp
 import tweepy
-from blobStorage import initialiseBlobStorage
+from azure.storage.blob import BlobServiceClient
+from dotenv import load_dotenv
+
+# Load environment variables from .env file for local development
+#load_dotenv()
+
+
+def initialiseBlobStorage(connection_string):
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    container_client = blob_service_client.get_container_client('merchbotproducts')
+
+    return container_client
 
 def initialise():
     # Halsey Watch Twitter API credentials
-    API_KEY = 'aGVBNdbIY8D96yxXP7EkdH6Zg'
-    API_SECRET_KEY = 'tzqSn5f9nzL8eTEuuhOu0GETbo4KdDaZDhl9MjVgKoHYaET9lI'
-    ACCESS_TOKEN = '1844430975293636608-6K4TA9SwUchC4jYLmLF3TbD7RVrk0t'
-    ACCESS_TOKEN_SECRET = 'sGY8mvVzIYeVvA50nn882uCy8XJfDa4BGpNzHlpEAHTAn'
-    BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAFza0QEAAAAA8JseWi2gpHki0Y9VWMwh9hBTEnU%3DeRWWhqIe0nMn8v12jEI75nmnIpk9BtNM2FoVyeNM6HmFnB4h9A'
+    API_KEY = os.getenv("api-key")
+    API_SECRET_KEY = os.getenv("api-key-secret")
+    ACCESS_TOKEN = os.getenv("access-token")
+    ACCESS_TOKEN_SECRET = os.getenv("access-token-secret")
+    BEARER_TOKEN = os.getenv("bearer-token")
+
 
     # Set up tweepy client for OAuth 2.0 User Context
     client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET, wait_on_rate_limit=True)
@@ -28,7 +40,7 @@ previous_products_file_EU = 'previous_productsEU.csv'
 url_US = 'https://www.halseymusicstore.com'
 previous_products_file_US = 'previous_productsUS.csv'
 
-# UK URL
+# UK URL 
 url_UK = 'https://www.halseymusicstore.co.uk'
 previous_products_file_UK = 'previous_productsUK.csv'
 
@@ -36,7 +48,6 @@ global container_client
 global halseyWatch
 
 
-CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=halseybot9e83;AccountKey=B2DCFtCGtESjL2mycH0gK1C4NXddgPyM1lGuS9YV2fw5Tc7K7Fo1amMNM6vDInOcJt8caw8o2DHS+AStnPmKlA==;EndpointSuffix=core.windows.net"
 
 def read_previous_products(file_path):
     blob_client = container_client.get_blob_client(os.path.basename(file_path))
@@ -167,7 +178,6 @@ async def check_for_new_products(file_path, url):
         print(f"Error fetching products: {e}")
 
 async def run_checks():
-    start_time = asyncio.get_event_loop().time()
     while True:
         await asyncio.gather(
             check_for_new_products(file_path=previous_products_file_US, url=url_US),
@@ -175,18 +185,20 @@ async def run_checks():
             check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
         )
         await asyncio.sleep(0.5)  # Sleep for half a second
-        if asyncio.get_event_loop().time() - start_time > 58:
-            break
 
-def main():
+async def main():
     global container_client
     global halseyWatch
+    
+    CONNECTION_STRING = os.getenv("connection-string")
+
+    if not CONNECTION_STRING:
+        raise ValueError("Connection string is missing!")
 
     halseyWatch = initialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
-
-
-    asyncio.run(run_checks())
+    await run_checks()
 
 if __name__ == "__main__":
-    main()
+    print("🟢 Script is running directly")
+    asyncio.run(main())
