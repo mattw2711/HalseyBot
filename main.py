@@ -20,11 +20,11 @@ def initialiseBlobStorage(connection_string):
 
 def initialise():
     # Halsey Watch Twitter API credentials
-    API_KEY = os.getenv("api-key")
-    API_SECRET_KEY = os.getenv("api-key-secret")
-    ACCESS_TOKEN = os.getenv("access-token")
-    ACCESS_TOKEN_SECRET = os.getenv("access-token-secret")
-    BEARER_TOKEN = os.getenv("bearer-token")
+    API_KEY = "aGVBNdbIY8D96yxXP7EkdH6Zg"
+    API_SECRET_KEY = "tzqSn5f9nzL8eTEuuhOu0GETbo4KdDaZDhl9MjVgKoHYaET9lI"
+    ACCESS_TOKEN = "1844430975293636608-6K4TA9SwUchC4jYLmLF3TbD7RVrk0t"
+    ACCESS_TOKEN_SECRET = "sGY8mvVzIYeVvA50nn882uCy8XJfDa4BGpNzHlpEAHTAn"
+    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAFza0QEAAAAA8JseWi2gpHki0Y9VWMwh9hBTEnU%3DeRWWhqIe0nMn8v12jEI75nmnIpk9BtNM2FoVyeNM6HmFnB4h9A"
 
 
     # Set up tweepy client for OAuth 2.0 User Context
@@ -190,7 +190,7 @@ async def main():
     global container_client
     global halseyWatch
     
-    CONNECTION_STRING = os.getenv("connection-string")
+    CONNECTION_STRING = "DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=halseybotstorage;AccountKey=W2gnndm22MERfWmZofjZKg3xpu0ML/Pn2EPbUCcvhh2kZwwDUp8VRL3pnh/njNhItwIP2KX2IG7U+AStmiYN2A==;BlobEndpoint=https://halseybotstorage.blob.core.windows.net/;FileEndpoint=https://halseybotstorage.file.core.windows.net/;QueueEndpoint=https://halseybotstorage.queue.core.windows.net/;TableEndpoint=https://halseybotstorage.table.core.windows.net/"
 
     if not CONNECTION_STRING:
         raise ValueError("Connection string is missing!")
