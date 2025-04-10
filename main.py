@@ -6,10 +6,13 @@ import asyncio
 import aiohttp
 import tweepy
 from azure.storage.blob import BlobServiceClient
-from dotenv import load_dotenv
+from azure.identity import ManagedIdentityCredential
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
-# Load environment variables from .env file for local development
-#load_dotenv()
+keyvault_url = "https://halseybot-keys.vault.azure.net/"
+credential = DefaultAzureCredential()
+secret_client = SecretClient(vault_url=keyvault_url, credential=credential)
 
 
 def initialiseBlobStorage(connection_string):
@@ -20,12 +23,11 @@ def initialiseBlobStorage(connection_string):
 
 def initialise():
     # Halsey Watch Twitter API credentials
-    API_KEY = "aGVBNdbIY8D96yxXP7EkdH6Zg"
-    API_SECRET_KEY = "tzqSn5f9nzL8eTEuuhOu0GETbo4KdDaZDhl9MjVgKoHYaET9lI"
-    ACCESS_TOKEN = "1844430975293636608-6K4TA9SwUchC4jYLmLF3TbD7RVrk0t"
-    ACCESS_TOKEN_SECRET = "sGY8mvVzIYeVvA50nn882uCy8XJfDa4BGpNzHlpEAHTAn"
-    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAFza0QEAAAAA8JseWi2gpHki0Y9VWMwh9hBTEnU%3DeRWWhqIe0nMn8v12jEI75nmnIpk9BtNM2FoVyeNM6HmFnB4h9A"
-
+    API_KEY = secret_client.get_secret("api-key")
+    API_SECRET_KEY = secret_client.get_secret("api-key-secret")
+    ACCESS_TOKEN = secret_client.get_secret("access-token")
+    ACCESS_TOKEN_SECRET = secret_client.get_secret("access-token-secret")
+    BEARER_TOKEN = secret_client.get_secret("bearer-token")
 
     # Set up tweepy client for OAuth 2.0 User Context
     client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET, wait_on_rate_limit=True)
@@ -190,11 +192,8 @@ async def main():
     global container_client
     global halseyWatch
     
-    CONNECTION_STRING = "DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=halseybotstorage;AccountKey=W2gnndm22MERfWmZofjZKg3xpu0ML/Pn2EPbUCcvhh2kZwwDUp8VRL3pnh/njNhItwIP2KX2IG7U+AStmiYN2A==;BlobEndpoint=https://halseybotstorage.blob.core.windows.net/;FileEndpoint=https://halseybotstorage.file.core.windows.net/;QueueEndpoint=https://halseybotstorage.queue.core.windows.net/;TableEndpoint=https://halseybotstorage.table.core.windows.net/"
-
-    if not CONNECTION_STRING:
-        raise ValueError("Connection string is missing!")
-
+    CONNECTION_STRING = secret_client.get_secret("connection-string").value
+    
     halseyWatch = initialise()
     container_client = initialiseBlobStorage(CONNECTION_STRING)
     await run_checks()
