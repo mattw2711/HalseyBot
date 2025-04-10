@@ -23,11 +23,11 @@ def initialiseBlobStorage(connection_string):
 
 def initialise():
     # Halsey Watch Twitter API credentials
-    API_KEY = secret_client.get_secret("api-key")
-    API_SECRET_KEY = secret_client.get_secret("api-key-secret")
-    ACCESS_TOKEN = secret_client.get_secret("access-token")
-    ACCESS_TOKEN_SECRET = secret_client.get_secret("access-token-secret")
-    BEARER_TOKEN = secret_client.get_secret("bearer-token")
+    API_KEY = secret_client.get_secret("api-key").value
+    API_SECRET_KEY = secret_client.get_secret("api-key-secret").value
+    ACCESS_TOKEN = secret_client.get_secret("access-token").value
+    ACCESS_TOKEN_SECRET = secret_client.get_secret("access-token-secret").value
+    BEARER_TOKEN = secret_client.get_secret("bearer-token").value
 
     # Set up tweepy client for OAuth 2.0 User Context
     client = tweepy.Client(bearer_token=BEARER_TOKEN, consumer_key=API_KEY, consumer_secret=API_SECRET_KEY, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET, wait_on_rate_limit=True)
