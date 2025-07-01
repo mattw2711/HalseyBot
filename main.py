@@ -46,6 +46,11 @@ previous_products_file_US = 'previous_productsUS.csv'
 url_UK = 'https://www.halseymusicstore.co.uk'
 previous_products_file_UK = 'previous_productsUK.csv'
 
+# Global URL
+url_Global = 'https://www.halseymusicstore.com'
+previous_products_file_Global = 'previous_productsGlobal.csv'
+
+
 global container_client
 global halseyWatch
 
@@ -104,6 +109,11 @@ def tweet(product, status, url):
         elif url == url_UK:
             currency = "£"
             flag = "🇬🇧"
+
+        elif url == url_US:
+            currency = "$"
+            flag = "🇺🇸"
+
         else:
             currency = "€"
             flag = "🌐"
@@ -175,14 +185,15 @@ async def check_for_new_products(file_path, url):
         if current_products != previous_products:
             write_current_products(file_path, current_products)
 
-        print("ran" + url)
+        print("Ran " + url)
     except aiohttp.ClientError as e:
         print(f"Error fetching products: {e}")
 
 async def run_checks():
     while True:
         await asyncio.gather(
-            check_for_new_products(file_path=previous_products_file_US, url=url_US)
+            check_for_new_products(file_path=previous_products_file_Global, url=url_Global)
+            # check_for_new_products(file_path=previous_products_file_US, url=url_US)
             # check_for_new_products(file_path=previous_products_file_UK, url=url_UK),
             # check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
         )
