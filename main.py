@@ -105,8 +105,8 @@ def tweet(product, status, url):
             currency = "£"
             flag = "🇬🇧"
         else:
-            currency = "$"
-            flag = "🇺🇸"
+            currency = "€"
+            flag = "🌐"
 
         tweet_text = f"{flag} {status.upper()} {flag}\n{title} - {currency}{price}\n{link}"
         test_text = f"🛠️ TESTING 🛠️\n{title} - {currency}{price}\n{link}"
@@ -182,9 +182,9 @@ async def check_for_new_products(file_path, url):
 async def run_checks():
     while True:
         await asyncio.gather(
-            check_for_new_products(file_path=previous_products_file_US, url=url_US),
-            check_for_new_products(file_path=previous_products_file_UK, url=url_UK),
-            check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
+            check_for_new_products(file_path=previous_products_file_US, url=url_US)
+            # check_for_new_products(file_path=previous_products_file_UK, url=url_UK),
+            # check_for_new_products(file_path=previous_products_file_EU, url=url_EU)
         )
         await asyncio.sleep(0.5)  # Sleep for half a second
 
