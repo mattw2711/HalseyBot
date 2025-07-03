@@ -195,6 +195,21 @@ async def check_for_new_products(file_path, url, region):
             and previous_products[title] == current_products[title]
         }
 
+        # Send alert tweet if more than 5 new products
+        if DRY_RUN:
+            if len(new_products) > 5:
+                print("[DRY RUN] Would tweet: 🚨 Lots of new items have dropped! 🚨")
+        else:
+            if len(new_products) > 5:
+                try:
+                    response = halseyWatch.create_tweet(text="🚨 Lots of new items have dropped! Individual posts to follow 🚨")
+                    if response.errors:
+                        raise Exception(f"Request returned an error: {response.errors}")
+                    print("Tweeted: 🚨 Lots of new items have dropped!")
+                except tweepy.TweepyException as e:
+                    print(f"Error tweeting alert: {e}")
+
+
         for item in data["products"]:
             title = item["title"]
             status = ""
