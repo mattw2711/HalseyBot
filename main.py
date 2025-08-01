@@ -11,6 +11,8 @@ from azure.identity import ManagedIdentityCredential
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 import itertools
+import ssl
+import certifi
 
 counter = itertools.count()
 import os
@@ -175,7 +177,11 @@ async def fetch_products(session, url):
 async def check_for_new_products(file_path, url, region):
     previous_products = read_previous_products(file_path)
     try:
-        async with aiohttp.ClientSession() as session:
+        # Create SSL context with proper certificates
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        
+        async with aiohttp.ClientSession(connector=connector) as session:
             data = await fetch_products(session, url)
 
         current_products = {}
@@ -259,7 +265,6 @@ async def run_checks():
     while True:
         await asyncio.gather(
             check_for_new_products(file_path=previous_products_file_Badlands, url=url_Badlands, region="US"),
-            check_for_new_products(file_path=previous_products_file_Badlands_eu, url=url_Badlands_eu, region="EU"),
             check_for_new_products(file_path=previous_products_file_Badlands_uk, url=url_Badlands_uk, region="UK"),
             check_for_new_products(file_path=previous_products_file_EU, url=url_EU, region="EU"),
             check_for_new_products(file_path=previous_products_file_UK, url=url_UK, region="UK"),

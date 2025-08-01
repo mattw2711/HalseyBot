@@ -47,19 +47,8 @@ az acr login --name halseybotacr
 echo "Pushing Docker image to Azure Container Registry..."
 docker push halseybotacr.azurecr.io/halseybot:latest
 
-# Step 4: Stop the container app before deployment
-echo "Stopping container app..."
-az containerapp update \
-  --name halseybot \
-  --resource-group halseybot-rg \
-  --min-replicas 0 \
-  --max-replicas 0
-
-echo "Waiting for container app to stop..."
-sleep 15
-
-# Step 5: Update the Azure Container App with the new image
-echo "Updating Azure Container App..."
+# Step 4: Update the Azure Container App with the new image (no stopping needed)
+echo "Updating Azure Container App with new image..."
 az containerapp update \
   --name halseybot \
   --resource-group halseybot-rg \
@@ -67,7 +56,7 @@ az containerapp update \
   --min-replicas 1 \
   --max-replicas 1
 
-# Step 6: Wait for deployment to complete and verify it's running
+# Step 5: Wait for deployment to complete and verify it's running
 echo "Waiting for deployment to complete..."
 sleep 20
 echo "Verifying deployment status..."
