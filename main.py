@@ -66,6 +66,18 @@ previous_products_file_UK = "previous_productsUK.csv"
 url_Global = "https://www.halseymusicstore.com"
 previous_products_file_Global = "previous_productsGlobal.csv"
 
+# Badlands US
+url_Badlands = "https://shop.visitbadlands.com"
+previous_products_file_Badlands = "previous_productsBadlands.csv"
+
+# Badlands EU
+url_Badlands_EU = "https://shop.visitbadlands.eu"
+previous_products_file_Badlands_EU = "previous_productsBadlands_EU.csv"
+
+# Badlands UK
+url_Badlands_UK = "https://shop.visitbadlands.co.uk"
+previous_products_file_Badlands_UK = "previous_productsBadlands_UK.csv"
+
 
 global container_client
 global halseyWatch
@@ -246,9 +258,10 @@ async def check_for_new_products(file_path, url, region):
 async def run_checks():
     while True:
         await asyncio.gather(
-            # check_for_new_products(file_path=previous_products_file_EU, url=url_Global, region="EU"),
-            # check_for_new_products(file_path=previous_products_file_UK, url=url_Global, region="UK"),
-            # check_for_new_products(file_path=previous_products_file_US, url=url_Global, region="US"),
+            check_for_new_products(file_path=previous_products_file_Badlands, url=url_Badlands, region="US"),
+            check_for_new_products(file_path=previous_products_file_EU, url=url_EU, region="EU"),
+            check_for_new_products(file_path=previous_products_file_UK, url=url_UK, region="UK"),
+            check_for_new_products(file_path=previous_products_file_US, url=url_US, region="US"),
             check_for_new_products(file_path=previous_products_file_Global, url=url_Global, region="Global"),
         )
         await asyncio.sleep(0.5)  # Sleep for half a second
