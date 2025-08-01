@@ -47,9 +47,16 @@ az acr login --name halseybotacr
 echo "Pushing Docker image to Azure Container Registry..."
 docker push halseybotacr.azurecr.io/halseybot:latest
 
-# Step 4: Stop any existing instances to ensure only one runs
-echo "Stopping existing container app instances..."
-az containerapp revision deactivate --revision $(az containerapp revision list --name halseybot --resource-group halseybot-rg --query "[?properties.active].name" -o tsv) --yes 2>/dev/null || echo "No active revisions to stop"
+# Step 4: Stop the container app before deployment
+echo "Stopping container app..."
+az containerapp update \
+  --name halseybot \
+  --resource-group halseybot-rg \
+  --min-replicas 0 \
+  --max-replicas 0
+
+echo "Waiting for container app to stop..."
+sleep 15
 
 # Step 5: Update the Azure Container App with the new image
 echo "Updating Azure Container App..."
@@ -62,7 +69,7 @@ az containerapp update \
 
 # Step 6: Wait for deployment to complete and verify it's running
 echo "Waiting for deployment to complete..."
-sleep 10
+sleep 20
 echo "Verifying deployment status..."
 status=$(az containerapp show --name halseybot --resource-group halseybot-rg --query "properties.runningStatus" -o tsv)
 if [ "$status" = "Running" ]; then

@@ -70,13 +70,13 @@ previous_products_file_Global = "previous_productsGlobal.csv"
 url_Badlands = "https://shop.visitbadlands.com"
 previous_products_file_Badlands = "previous_productsBadlands.csv"
 
-# Badlands EU
-url_Badlands_EU = "https://shop.visitbadlands.eu"
-previous_products_file_Badlands_EU = "previous_productsBadlands_EU.csv"
+# Badlands uk
+url_Badlands_uk = "https://shopuk.visitbadlands.com"
+previous_products_file_Badlands_uk = "previous_productsBadlands_uk.csv"
 
-# Badlands UK
-url_Badlands_UK = "https://shop.visitbadlands.co.uk"
-previous_products_file_Badlands_UK = "previous_productsBadlands_UK.csv"
+# Badlands eu
+url_Badlands_eu = "https://shopeu.visitbadlands.com"
+previous_products_file_Badlands_eu = "previous_productsBadlands_eu.csv"
 
 
 global container_client
@@ -259,6 +259,8 @@ async def run_checks():
     while True:
         await asyncio.gather(
             check_for_new_products(file_path=previous_products_file_Badlands, url=url_Badlands, region="US"),
+            check_for_new_products(file_path=previous_products_file_Badlands_eu, url=url_Badlands_eu, region="EU"),
+            check_for_new_products(file_path=previous_products_file_Badlands_uk, url=url_Badlands_uk, region="UK"),
             check_for_new_products(file_path=previous_products_file_EU, url=url_EU, region="EU"),
             check_for_new_products(file_path=previous_products_file_UK, url=url_UK, region="UK"),
             check_for_new_products(file_path=previous_products_file_US, url=url_US, region="US"),
