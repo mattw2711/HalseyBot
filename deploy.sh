@@ -33,26 +33,27 @@ if ! az account show > /dev/null 2>&1; then
 fi
 echo "Azure CLI authenticated successfully!"
 
-# Step 1: Rebuild the Docker image targeting linux/amd64
+# Step 1: Rebuild the Docker image targeting linux/amd64 with timestamped tag
 echo "Building Docker image..."
-docker build --platform linux/amd64 -t halseybot .
+tag=$(date +%s)
+docker build --platform linux/amd64 -t halseybot:$tag .
 
 # Step 2: Tag the Docker image for Azure Container Registry
 echo "Tagging Docker image for Azure Container Registry..."
-docker tag halseybot halseybotacr.azurecr.io/halseybot:latest
+docker tag halseybot:$tag halseybotacr.azurecr.io/halseybot:$tag
 
 # Step 3: Log in to Azure Container Registry and push the image
 echo "Logging into Azure Container Registry..."
 az acr login --name halseybotacr
 echo "Pushing Docker image to Azure Container Registry..."
-docker push halseybotacr.azurecr.io/halseybot:latest
+docker push halseybotacr.azurecr.io/halseybot:$tag
 
 # Step 4: Update the Azure Container App with the new image (no stopping needed)
 echo "Updating Azure Container App with new image..."
 az containerapp update \
   --name halseybot \
   --resource-group halseybot-rg \
-  --image halseybotacr.azurecr.io/halseybot:latest \
+  --image halseybotacr.azurecr.io/halseybot:$tag \
   --min-replicas 1 \
   --max-replicas 1
 
@@ -67,6 +68,18 @@ if [ "$status" = "Running" ]; then
 else
     echo "⚠️  Warning: Container app status is: $status"
     echo "Check logs with: az containerapp logs show --name halseybot --resource-group halseybot-rg --tail 50"
+fi
+
+active=$(az containerapp revision list --name halseybot --resource-group halseybot-rg --query "[?properties.active==\`true\`].name" -o tsv)
+if [ -z "$active" ]; then
+    echo "No active revision found. Reactivating the latest revision..."
+    latest=$(az containerapp revision list --name halseybot --resource-group halseybot-rg --query "[-1].name" -o tsv)
+    if [ -n "$latest" ]; then
+        az containerapp revision activate --name halseybot --resource-group halseybot-rg --revision $latest
+        echo "Reactivated revision: $latest"
+    else
+        echo "Error: No revisions available to activate."
+    fi
 fi
 
 echo "Deployment complete!"
