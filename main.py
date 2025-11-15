@@ -269,7 +269,7 @@ async def run_checks():
             check_for_new_products(file_path=previous_products_file_EU, url=url_EU, region="EU"),
             check_for_new_products(file_path=previous_products_file_UK, url=url_UK, region="UK"),
             check_for_new_products(file_path=previous_products_file_US, url=url_US, region="US"),
-            check_for_new_products(file_path=previous_products_file_Global, url=url_Global, region="Global"),
+            #check_for_new_products(file_path=previous_products_file_Global, url=url_Global, region="Global"),
         )
         await asyncio.sleep(0.5)  # Sleep for half a second
 
