@@ -63,23 +63,10 @@ previous_products_file_US = "previous_productsUS.csv"
 # UK URL
 url_UK = "https://www.halseymusicstore.co.uk"
 previous_products_file_UK = "previous_productsUK.csv"
-
+ 
 # Global URL
 url_Global = "https://www.halseymusicstore.com"
 previous_products_file_Global = "previous_productsGlobal.csv"
-
-# Badlands US
-url_Badlands = "https://shop.visitbadlands.com"
-previous_products_file_Badlands = "previous_productsBadlands.csv"
-
-# Badlands uk
-url_Badlands_uk = "https://shopuk.visitbadlands.com"
-previous_products_file_Badlands_uk = "previous_productsBadlands_uk.csv"
-
-# Badlands eu
-url_Badlands_eu = "https://shopeu.visitbadlands.com"
-previous_products_file_Badlands_eu = "previous_productsBadlands_eu.csv"
-
 
 global container_client
 global halseyWatch
@@ -264,8 +251,6 @@ async def check_for_new_products(file_path, url, region):
 async def run_checks():
     while True:
         await asyncio.gather(
-            check_for_new_products(file_path=previous_products_file_Badlands, url=url_Badlands, region="US"),
-            check_for_new_products(file_path=previous_products_file_Badlands_uk, url=url_Badlands_uk, region="UK"),
             check_for_new_products(file_path=previous_products_file_EU, url=url_EU, region="EU"),
             check_for_new_products(file_path=previous_products_file_UK, url=url_UK, region="UK"),
             check_for_new_products(file_path=previous_products_file_US, url=url_US, region="US"),
