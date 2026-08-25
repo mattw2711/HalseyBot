@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Deployed
+> **Status:** Validated
 
 Generated: 2026-08-25T22:34:00+01:00
 
@@ -8,8 +8,8 @@ Generated: 2026-08-25T22:34:00+01:00
 
 ## 1. Project Overview
 
-**Goal:** Clean up and redeploy the HalseyBot background worker so it monitors the new
-Girl in the Tower storefront quickly, reliably, and at low cost.
+**Goal:** Run HalseyBot as a fast, reliable, low-cost storefront monitor and migrate
+automatic notifications from the paid X API to a free Discord webhook.
 
 **Path:** Modernize Existing
 
@@ -104,6 +104,13 @@ new IaC or an AZD environment would add migration risk without improving this ch
 14. Remove the stale HTTP scale rule with an explicit empty rule set, retain
     `minReplicas=1` and `maxReplicas=1`, reduce routine success logs to five-minute
     heartbeats, and pin transitive dependencies plus the base image digest.
+15. Replace Tweepy and all X API credentials with one Discord webhook URL retrieved from
+    Key Vault through the existing managed identity.
+16. Publish Discord messages with link previews disabled, suppress mentions, honor
+    webhook rate-limit responses, and retain acknowledged retries before product state
+    advances.
+17. Remove X-only dependencies and documentation. On deployment, the seven pending
+    Capitol detections will be rediscovered, delivered to Discord, and then persisted.
 
 The new Shopify store is currently password-protected. The worker will not bypass the
 password; it will retry at a low frequency and automatically become reactive when the
@@ -150,8 +157,17 @@ because the resource delta is zero and no quota-controlled capacity is requested
 - [x] Update the Docker and Azure CLI deployment configuration
 - [x] Run a no-push ACR validation build (Docker is unavailable locally)
 - [x] Update plan status to `Ready for Validation`
+- [x] Replace X publishing with Discord webhook publishing
+- [x] Add Discord formatting, success, retry, and rate-limit tests
+- [x] Store the Discord webhook URL in Key Vault
+- [x] Remove X-only dependencies and update operating documentation
+- [x] Update plan status to `Ready for Validation`
 
 ### Phase 3: Validation
+- [x] Re-run `azure-validate` for the Discord migration
+  - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
+  - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
+  - [x] 3. Azure Policy Validation
 - [x] Re-run `azure-validate` after final scale/logging/dependency cleanup
 - [x] All validation checks pass
   - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
@@ -163,6 +179,8 @@ because the resource delta is zero and no quota-controlled capacity is requested
 - [x] Record updated validation proof below
 
 ### Phase 4: Deployment
+- [ ] Invoke `azure-deploy` for the Discord revision
+- [ ] Verify Discord delivery, state recovery, one ready replica, and zero restarts
 - [x] Invoke `azure-deploy`
 - [x] Build and push an immutable image
 - [x] Disable ingress and deploy one worker replica
@@ -188,10 +206,17 @@ because the resource delta is zero and no quota-controlled capacity is requested
 | Production deployment | ACR build `cb6`; deploy image `20260825215619-b49e375` | Pass | 2026-08-25T21:58Z |
 | Live revision | Verify `halseybot--0000014`, one active revision, one ready replica, zero restarts, no ingress, and no scale rules | Pass | 2026-08-25T21:59Z |
 | Live worker behavior | Verify Capitol checks with zero changes and Girl in the Tower `401` retries at 300 seconds | Pass | 2026-08-25T21:59Z |
+| Discord migration image | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` (run `cb7`) | Pass; nine tests and Tweepy removed | 2026-08-25T22:29Z |
+| Discord webhook | Send mention-safe, embed-suppressed validation message using Key Vault secret | Pass; HTTP 204 | 2026-08-25T22:30Z |
+| Discord source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T22:29Z |
+| Discord Azure target | Verify authenticated subscription, Container App, ACR, Key Vault secret, single revision, disabled ingress, and fixed one-replica scale | Pass | 2026-08-25T22:31Z |
+| Discord managed identity | Confirm the live Container App principal has Key Vault secret `Get` and `List` access | Pass | 2026-08-25T22:31Z |
+| Discord Azure Policy | `az policy assignment list --subscription 91bb5510-5bb1-4f85-a022-12f907612b87` | Pass; only Defender default assignment | 2026-08-25T22:31Z |
+| Discord IaC validation/what-if | No resource or IaC changes; application revision only | Not applicable | 2026-08-25T22:31Z |
 
 **Validated by:** `azure-validate` workflow
 
-**Validation timestamp:** 2026-08-25T21:55Z
+**Validation timestamp:** 2026-08-25T22:32Z
 
 ---
 
@@ -212,20 +237,22 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 ## 10. Functional Verification
 
-- **Status:** Verified
-- **Backend:** Python compilation, Bash syntax, diff checks, and seven unit tests passed
-  in an Azure Container Registry `linux/amd64` no-push build.
+- **Status:** Verified for validation hand-off
+- **Backend:** Python compilation, Bash syntax, diff checks, and nine unit tests passed
+  in Azure Container Registry `linux/amd64` no-push build `cb7`.
 - **UI:** Not applicable; this is a background worker with ingress disabled.
 - **External feeds:** The Capitol Halsey collection feed returns product data. Girl in
   the Tower correctly returns `401` while password-protected and will use controlled
   retries until it opens.
-- **Build:** ACR Task run `cb3` succeeded on 2026-08-25.
+- **Discord:** The Key Vault-backed webhook accepted a real validation message with
+  HTTP `204`; mentions and automatic embeds were disabled.
+- **Build:** ACR Task run `cb7` succeeded on 2026-08-25.
 
 ---
 
 ## 11. Next Steps
 
-> Current: Deployed
+> Current: Validated
 
-1. Monitor the normal five-minute heartbeat and protected-store retries.
-2. Run `./deploy.sh` for future tested, remote-build deployments.
+1. Run the `azure-validate` workflow for the Discord revision.
+2. Deploy and verify the Discord revision.

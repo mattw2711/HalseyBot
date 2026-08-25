@@ -1,8 +1,8 @@
 # HalseyBot
 
-HalseyBot is an asynchronous Python worker that monitors the Girl in the Tower
-Shopify storefront and posts product and inventory changes to Twitter. It runs as
-one always-on Azure Container Apps Consumption replica.
+HalseyBot is an asynchronous Python worker that monitors the Girl in the Tower and
+Capitol Music Shopify storefronts and posts product and inventory changes to Discord.
+It runs as one always-on Azure Container Apps Consumption replica.
 
 ## Storefronts
 
@@ -25,8 +25,10 @@ Capitol Halsey collection is saved silently, and only later changes are announce
 - Successful checks run every 10 seconds by default.
 - Rate limits honor `Retry-After`.
 - Transient failures use capped exponential backoff and jitter.
-- Blob Storage and Twitter SDK calls run outside the asyncio event loop.
-- Product state advances only after queued tweets are published successfully.
+- Blob Storage calls run outside the asyncio event loop.
+- Discord notifications reuse the worker's asynchronous HTTP session.
+- Product state advances only after queued Discord notifications are delivered.
+- Discord mentions and automatic link previews are disabled.
 - HTTP ingress is disabled because this is a background worker, not a web app.
 - Routine success logs are emitted every five minutes rather than every poll.
 - The Python dependency graph and base container digest are pinned.
@@ -40,8 +42,12 @@ Optional environment variables:
 | `RATE_LIMIT_RETRY_SECONDS` | `60` | Delay for `429` without `Retry-After` |
 | `MAX_BACKOFF_SECONDS` | `300` | Maximum transient-failure delay |
 | `HEARTBEAT_INTERVAL_SECONDS` | `300` | Routine success-log interval |
-| `DRY_RUN` | `false` | Log tweets without publishing |
+| `DRY_RUN` | `false` | Log Discord notifications without publishing |
 | `KEY_VAULT_URL` | `https://halseybot-keys.vault.azure.net/` | Secret source |
+
+The Discord webhook URL is stored in Key Vault as `discord-webhook-url`. The
+Container App retrieves it through its existing managed identity; it is never stored
+in source control or a Container App environment variable.
 
 ## Local checks
 

@@ -2,10 +2,12 @@ import unittest
 from unittest.mock import patch
 
 from main import (
+    DiscordWebhookError,
     Store,
-    build_tweet_text,
+    build_notification_text,
     calculate_retry_delay,
     classify_products,
+    publish_discord_notification,
 )
 
 
@@ -117,7 +119,7 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(calculate_retry_delay(None, failures=10), 300)
 
 
-class TweetFormattingTests(unittest.TestCase):
+class NotificationFormattingTests(unittest.TestCase):
     def test_uses_locale_specific_product_link(self) -> None:
         store = Store(
             region="EU",
@@ -129,12 +131,104 @@ class TweetFormattingTests(unittest.TestCase):
             announce_initial_products=True,
         )
 
-        text = build_tweet_text(product("tower-shirt", True), "NEW PRODUCT", store)
+        text = build_notification_text(
+            product("tower-shirt", True), "NEW PRODUCT", store
+        )
 
         self.assertIn("€20.00", text)
         self.assertIn(
             "https://www.girlinthetower.com/en-eu/products/tower-shirt", text
         )
+
+
+class FakeResponse:
+    def __init__(
+        self,
+        status: int,
+        *,
+        body: str = "",
+        retry_after: str | None = None,
+    ) -> None:
+        self.status = status
+        self.body = body
+        self.headers = {}
+        if retry_after is not None:
+            self.headers["Retry-After"] = retry_after
+
+    async def __aenter__(self) -> "FakeResponse":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    async def json(self, content_type: None = None) -> dict[str, float]:
+        del content_type
+        return {"retry_after": float(self.headers.get("Retry-After", "0"))}
+
+    async def text(self) -> str:
+        return self.body
+
+
+class FakeSession:
+    def __init__(self, response: FakeResponse) -> None:
+        self.response = response
+        self.url = ""
+        self.payload: dict | None = None
+
+    def post(self, url: str, *, json: dict) -> FakeResponse:
+        self.url = url
+        self.payload = json
+        return self.response
+
+
+class DiscordPublishingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_posts_safely_to_discord(self) -> None:
+        session = FakeSession(FakeResponse(204))
+        store = Store(
+            region="US",
+            base_url="https://example.com",
+            feed_path="/products.json",
+            state_blob="state.csv",
+            currency="$",
+            flag="🇺🇸",
+            announce_initial_products=True,
+        )
+
+        await publish_discord_notification(
+            session, "https://discord.example/webhook", product("new-item", True),
+            "NEW PRODUCT", store
+        )
+
+        self.assertEqual(session.url, "https://discord.example/webhook")
+        self.assertEqual(session.payload["allowed_mentions"], {"parse": []})
+        self.assertEqual(session.payload["flags"], 4)
+        self.assertIn("https://example.com/products/new-item", session.payload["content"])
+
+    async def test_surfaces_discord_retry_after(self) -> None:
+        session = FakeSession(
+            FakeResponse(429, body="rate limited", retry_after="2.5")
+        )
+        store = Store(
+            region="US",
+            base_url="https://example.com",
+            feed_path="/products.json",
+            state_blob="state.csv",
+            currency="$",
+            flag="🇺🇸",
+            announce_initial_products=True,
+        )
+
+        with self.assertRaises(DiscordWebhookError) as raised:
+            await publish_discord_notification(
+                session,
+                "https://discord.example/webhook",
+                product("new-item", True),
+                "NEW PRODUCT",
+                store,
+            )
+
+        self.assertEqual(raised.exception.status, 429)
+        self.assertEqual(raised.exception.retry_after, 2.5)
 
 
 if __name__ == "__main__":
