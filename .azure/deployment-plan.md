@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Deployed
+> **Status:** Validated
 
 Generated: 2026-08-25T22:34:00+01:00
 
@@ -8,8 +8,8 @@ Generated: 2026-08-25T22:34:00+01:00
 
 ## 1. Project Overview
 
-**Goal:** Run HalseyBot as a fast, reliable, low-cost storefront monitor and migrate
-automatic notifications from the paid X API to a free Discord webhook.
+**Goal:** Run HalseyBot as a fast, reliable, low-cost storefront monitor with dedicated
+Discord channels for each storefront/location and a deliberate fresh-catalog launch.
 
 **Path:** Modernize Existing
 
@@ -115,6 +115,15 @@ new IaC or an AZD environment would add migration risk without improving this ch
     price, status, and destination link. Continue suppressing mentions.
 19. After the rich-embed revision is healthy, perform one explicit replay of the seven
     previously acknowledged Capitol products without altering their saved state.
+20. Route Girl in the Tower EU, UK, and US plus Capitol US through four independent
+    webhooks stored as separate Key Vault secrets.
+21. Use one acknowledged queue and publisher task per storefront so Discord rate limits
+    or a failure in one channel cannot delay the other locations.
+22. Redesign messages with a prominent status banner, status-specific color, clear
+    price/store fields, full-width product image, and a direct product or checkout link.
+23. Make all four storefronts announce their complete first successful catalog.
+24. Only after the four-channel revision is healthy, delete the explicitly approved
+    product-state blobs so the catalogs are replayed through the correct channels.
 
 The new Shopify store is currently password-protected. The worker will not bypass the
 password; it will retry at a low frequency and automatically become reactive when the
@@ -168,8 +177,17 @@ because the resource delta is zero and no quota-controlled capacity is requested
 - [x] Update plan status to `Ready for Validation`
 - [x] Add native Discord product embeds and image coverage
 - [x] Update plan status to `Ready for Validation`
+- [x] Configure four Key Vault-backed Discord webhooks
+- [x] Add independent per-store queues and publishers
+- [x] Redesign and test the Discord message presentation
+- [x] Enable fresh initial announcements for all four storefronts
+- [x] Update plan status to `Ready for Validation`
 
 ### Phase 3: Validation
+- [x] Re-run `azure-validate` for four-channel routing and fresh launch
+  - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
+  - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
+  - [x] 3. Azure Policy Validation
 - [x] Re-run `azure-validate` for rich Discord product embeds
   - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
   - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
@@ -233,6 +251,11 @@ because the resource delta is zero and no quota-controlled capacity is requested
 | Rich embed production deployment | ACR build `cbb`; deploy image `20260825224236-872eca1` | Pass after one transient concurrent-write retry | 2026-08-25T22:43Z |
 | Rich embed live revision | Verify `halseybot--0000016` is healthy and running | Pass | 2026-08-25T22:43Z |
 | Seven-item rich replay | Fetch the seven requested Capitol products and post one native image embed per product | Pass; seven HTTP successes and seven primary images | 2026-08-25T22:44Z |
+| Four Discord channels | Send a labeled connection message through each new Key Vault-backed webhook | Pass; EU, UK, US, and Capitol returned HTTP 204 | 2026-08-25T23:00Z |
+| Four-channel image | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` (run `cbc`) | Pass; twelve tests | 2026-08-25T23:01Z |
+| Four-channel source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T23:00Z |
+| Four-channel Azure target | Verify subscription, running single-revision Container App, disabled ingress, fixed one-replica scale, ACR build `cbc`, and policy assignments | Pass | 2026-08-25T23:02Z |
+| Four-channel secrets | Confirm all four Key Vault secrets are enabled and managed identity retains secret `Get`/`List` access | Pass | 2026-08-25T23:02Z |
 
 ### Live Role Verification
 
@@ -280,7 +303,7 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 ## 11. Next Steps
 
-> Current: Rich embeds deployed
+> Current: Ready for four-channel validation
 
-1. Monitor normal Discord notifications and five-minute store heartbeats.
-2. Keep the Discord webhook and destination channel active.
+1. Run `azure-validate` for the four-channel revision.
+2. Deploy, verify routing, then delete the eight approved state blobs.

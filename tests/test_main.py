@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 from main import (
     DiscordWebhookError,
+    STATUS_STYLE,
+    STORES,
     Store,
     build_discord_payload,
     calculate_retry_delay,
@@ -128,10 +130,12 @@ class RetryTests(unittest.TestCase):
 class NotificationFormattingTests(unittest.TestCase):
     def test_builds_rich_embed_with_locale_link_and_image(self) -> None:
         store = Store(
+            display_name="Girl in the Tower EU",
             region="EU",
             base_url="https://www.girlinthetower.com/en-eu",
             feed_path="/products.json?limit=250",
             state_blob="state.csv",
+            webhook_secret="discord-webhook-girl-eu",
             currency="€",
             flag="🇪🇺",
             announce_initial_products=True,
@@ -143,7 +147,12 @@ class NotificationFormattingTests(unittest.TestCase):
         embed = payload["embeds"][0]
 
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
-        self.assertEqual(embed["description"], "**Price:** €20.00")
+        self.assertEqual(payload["content"], "## ✨ NEW DROP")
+        self.assertEqual(embed["color"], STATUS_STYLE["NEW PRODUCT"][2])
+        self.assertEqual(embed["fields"][0]["value"], "**€20.00**")
+        self.assertEqual(
+            embed["fields"][1]["value"], "🇪🇺 Girl in the Tower EU"
+        )
         self.assertEqual(
             embed["url"],
             "https://www.girlinthetower.com/en-eu/products/tower-shirt",
@@ -154,10 +163,12 @@ class NotificationFormattingTests(unittest.TestCase):
 
     def test_omits_image_when_storefront_has_none(self) -> None:
         store = Store(
+            display_name="Example Store",
             region="US",
             base_url="https://example.com",
             feed_path="/products.json",
             state_blob="state.csv",
+            webhook_secret="discord-webhook-example",
             currency="$",
             flag="🇺🇸",
             announce_initial_products=True,
@@ -168,6 +179,35 @@ class NotificationFormattingTests(unittest.TestCase):
         )
 
         self.assertNotIn("image", payload["embeds"][0])
+
+    def test_every_store_has_a_unique_webhook_and_announces_initially(self) -> None:
+        webhook_secrets = {store.webhook_secret for store in STORES}
+
+        self.assertEqual(len(webhook_secrets), len(STORES))
+        self.assertTrue(all(store.announce_initial_products for store in STORES))
+
+    def test_sold_out_message_is_visually_distinct(self) -> None:
+        store = Store(
+            display_name="Example Store",
+            region="US",
+            base_url="https://example.com",
+            feed_path="/products.json",
+            state_blob="state.csv",
+            webhook_secret="discord-webhook-example",
+            currency="$",
+            flag="🇺🇸",
+            announce_initial_products=True,
+        )
+
+        payload = build_discord_payload(
+            product("sold-out", False), "OUT OF STOCK", store
+        )
+
+        self.assertEqual(payload["content"], "## 💨 SOLD OUT")
+        self.assertEqual(
+            payload["embeds"][0]["fields"][2]["value"],
+            "Currently sold out",
+        )
 
 
 class FakeResponse:
@@ -214,10 +254,12 @@ class DiscordPublishingTests(unittest.IsolatedAsyncioTestCase):
     async def test_posts_safely_to_discord(self) -> None:
         session = FakeSession(FakeResponse(204))
         store = Store(
+            display_name="Example Store",
             region="US",
             base_url="https://example.com",
             feed_path="/products.json",
             state_blob="state.csv",
+            webhook_secret="discord-webhook-example",
             currency="$",
             flag="🇺🇸",
             announce_initial_products=True,
@@ -244,10 +286,12 @@ class DiscordPublishingTests(unittest.IsolatedAsyncioTestCase):
             FakeResponse(429, body="rate limited", retry_after="2.5")
         )
         store = Store(
+            display_name="Example Store",
             region="US",
             base_url="https://example.com",
             feed_path="/products.json",
             state_blob="state.csv",
+            webhook_secret="discord-webhook-example",
             currency="$",
             flag="🇺🇸",
             announce_initial_products=True,

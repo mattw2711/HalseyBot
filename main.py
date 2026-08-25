@@ -38,10 +38,12 @@ HEARTBEAT_INTERVAL_SECONDS = max(
 
 @dataclass(frozen=True)
 class Store:
+    display_name: str
     region: str
     base_url: str
     feed_path: str
     state_blob: str
+    webhook_secret: str
     currency: str
     flag: str
     announce_initial_products: bool
@@ -53,40 +55,48 @@ class Store:
 
 STORES = (
     Store(
+        display_name="Girl in the Tower EU",
         region="EU",
         base_url="https://www.girlinthetower.com/en-eu",
         feed_path="/products.json?limit=250",
         state_blob="girlinthetower-products-eu.csv",
+        webhook_secret="discord-webhook-girl-eu",
         currency="€",
         flag="🇪🇺",
         announce_initial_products=True,
     ),
     Store(
+        display_name="Girl in the Tower UK",
         region="UK",
         base_url="https://www.girlinthetower.com/en-uk",
         feed_path="/products.json?limit=250",
         state_blob="girlinthetower-products-uk.csv",
+        webhook_secret="discord-webhook-girl-uk",
         currency="£",
         flag="🇬🇧",
         announce_initial_products=True,
     ),
     Store(
+        display_name="Girl in the Tower US",
         region="US",
         base_url="https://www.girlinthetower.com",
         feed_path="/products.json?limit=250",
         state_blob="girlinthetower-products-us.csv",
+        webhook_secret="discord-webhook-girl-us",
         currency="$",
         flag="🇺🇸",
         announce_initial_products=True,
     ),
     Store(
+        display_name="Capitol Music US",
         region="CAPITOL US",
         base_url="https://shop.capitolmusic.com",
         feed_path="/collections/halsey/products.json?limit=250",
         state_blob="capitol-halsey-products-us.csv",
+        webhook_secret="discord-webhook-capitol-us",
         currency="$",
         flag="🇺🇸",
-        announce_initial_products=False,
+        announce_initial_products=True,
     ),
 )
 
@@ -95,6 +105,17 @@ PRIORITY_MAP = {
     "BACK IN STOCK": 1,
     "OUT OF STOCK": 2,
     "NEW PRODUCT (OUT OF STOCK)": 2,
+}
+
+STATUS_STYLE = {
+    "NEW PRODUCT": ("✨", "NEW DROP", 0xEB459E),
+    "NEW PRODUCT (OUT OF STOCK)": (
+        "👀",
+        "NEW ITEM • CURRENTLY SOLD OUT",
+        0xFEE75C,
+    ),
+    "BACK IN STOCK": ("🔥", "BACK IN STOCK", 0x57F287),
+    "OUT OF STOCK": ("💨", "SOLD OUT", 0xED4245),
 }
 
 Product = dict[str, Any]
@@ -293,7 +314,10 @@ def build_discord_payload(
 ) -> dict[str, Any]:
     if status == "MULTIPLE NEW PRODUCTS":
         return {
-            "content": "🚨 Lots of new items have dropped! Individual posts to follow 🚨",
+            "content": (
+                f"# 🚨 {store.display_name} catalog drop\n"
+                f"{store.flag} **{store.region}** • Individual product cards incoming"
+            ),
             "allowed_mentions": {"parse": []},
         }
 
@@ -308,12 +332,32 @@ def build_discord_payload(
     else:
         link = f"{store.base_url}/products/{product['handle']}"
 
+    icon, label, color = STATUS_STYLE[status]
+    available = "OUT OF STOCK" not in status
     embed: dict[str, Any] = {
+        "author": {"name": f"HalseyBot • {store.display_name}"},
         "title": title,
         "url": link,
-        "description": f"**Price:** {store.currency}{variant['price']}",
-        "color": 0xED4245 if "OUT OF STOCK" in status else 0x57F287,
-        "footer": {"text": store.region},
+        "description": "Tap the product title to shop.",
+        "color": color,
+        "fields": [
+            {
+                "name": "💰 Price",
+                "value": f"**{store.currency}{variant['price']}**",
+                "inline": True,
+            },
+            {
+                "name": "🏬 Store",
+                "value": f"{store.flag} {store.display_name}",
+                "inline": True,
+            },
+            {
+                "name": "📦 Availability",
+                "value": "Available now" if available else "Currently sold out",
+                "inline": True,
+            },
+        ],
+        "footer": {"text": "Fast alerts • Stock can change without warning"},
     }
     images = product.get("images", [])
     if images and isinstance(images[0], dict):
@@ -322,7 +366,7 @@ def build_discord_payload(
             embed["image"] = {"url": image_url}
 
     return {
-        "content": f"{store.flag} **{status}** {store.flag}",
+        "content": f"## {icon} {label}",
         "embeds": [embed],
         "allowed_mentions": {"parse": []},
     }
@@ -469,12 +513,19 @@ async def monitor_store(
         await asyncio.sleep(delay * random.uniform(0.9, 1.1))
 
 
-def initialise_clients() -> tuple[BlobServiceClient, ContainerClient, str]:
+def initialise_clients() -> tuple[
+    BlobServiceClient, ContainerClient, dict[str, str]
+]:
     credential = DefaultAzureCredential()
     secret_client = SecretClient(vault_url=KEY_VAULT_URL, credential=credential)
     try:
         connection_string = secret_client.get_secret("connection-string").value
-        webhook_url = secret_client.get_secret("discord-webhook-url").value
+        webhook_urls = {
+            store.webhook_secret: secret_client.get_secret(
+                store.webhook_secret
+            ).value
+            for store in STORES
+        }
     finally:
         secret_client.close()
         credential.close()
@@ -485,12 +536,14 @@ def initialise_clients() -> tuple[BlobServiceClient, ContainerClient, str]:
     container_client = blob_service_client.get_container_client(
         "merchbotproducts"
     )
-    return blob_service_client, container_client, webhook_url
+    return blob_service_client, container_client, webhook_urls
 
 
 async def main() -> None:
-    blob_service_client, container_client, webhook_url = initialise_clients()
-    notification_queue: NotificationQueue = asyncio.PriorityQueue()
+    blob_service_client, container_client, webhook_urls = initialise_clients()
+    notification_queues: dict[str, NotificationQueue] = {
+        store.webhook_secret: asyncio.PriorityQueue() for store in STORES
+    }
     sequence = itertools.count()
     timeout = aiohttp.ClientTimeout(total=20)
     headers = {
@@ -503,12 +556,19 @@ async def main() -> None:
             timeout=timeout, headers=headers
         ) as session:
             await asyncio.gather(
-                notification_worker(notification_queue, session, webhook_url),
+                *(
+                    notification_worker(
+                        notification_queues[store.webhook_secret],
+                        session,
+                        webhook_urls[store.webhook_secret],
+                    )
+                    for store in STORES
+                ),
                 *(
                     monitor_store(
                         session,
                         container_client,
-                        notification_queue,
+                        notification_queues[store.webhook_secret],
                         sequence,
                         store,
                     )
