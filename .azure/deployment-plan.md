@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Validated
+> **Status:** Deployed
 
 Generated: 2026-08-25T22:34:00+01:00
 
@@ -230,6 +230,9 @@ because the resource delta is zero and no quota-controlled capacity is requested
 | Rich Discord embed image | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` (run `cb9`) | Pass; ten tests including image and no-image payloads | 2026-08-25T22:38Z |
 | Rich embed source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T22:38Z |
 | Rich embed Azure target | Verify subscription, running Container App, disabled ingress, single revision, fixed one-replica scale, ACR build `cb9`, and policy assignments | Pass | 2026-08-25T22:40Z |
+| Rich embed production deployment | ACR build `cbb`; deploy image `20260825224236-872eca1` | Pass after one transient concurrent-write retry | 2026-08-25T22:43Z |
+| Rich embed live revision | Verify `halseybot--0000016` is healthy and running | Pass | 2026-08-25T22:43Z |
+| Seven-item rich replay | Fetch the seven requested Capitol products and post one native image embed per product | Pass; seven HTTP successes and seven primary images | 2026-08-25T22:44Z |
 
 ### Live Role Verification
 
@@ -277,7 +280,7 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 ## 11. Next Steps
 
-> Current: Rich embeds validated
+> Current: Rich embeds deployed
 
-1. Validate the rich Discord embed payload.
-2. Deploy and verify the updated revision without replaying acknowledged products.
+1. Monitor normal Discord notifications and five-minute store heartbeats.
+2. Keep the Discord webhook and destination channel active.
