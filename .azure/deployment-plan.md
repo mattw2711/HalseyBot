@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Validated
+> **Status:** Deployed
 
 Generated: 2026-08-25T22:34:00+01:00
 
@@ -256,6 +256,10 @@ because the resource delta is zero and no quota-controlled capacity is requested
 | Four-channel source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T23:00Z |
 | Four-channel Azure target | Verify subscription, running single-revision Container App, disabled ingress, fixed one-replica scale, ACR build `cbc`, and policy assignments | Pass | 2026-08-25T23:02Z |
 | Four-channel secrets | Confirm all four Key Vault secrets are enabled and managed identity retains secret `Get`/`List` access | Pass | 2026-08-25T23:02Z |
+| Four-channel production deployment | ACR build `cbd`; deploy image `20260825230329-709765f` | Pass | 2026-08-25T23:05Z |
+| Four-channel live revision | Verify `halseybot--0000017` is the sole active healthy revision with one running replica, zero restarts, and no ingress | Pass | 2026-08-25T23:09Z |
+| Approved state reset | Delete all eight approved state blobs after deployment; replay Capitol again after the retiring revision briefly recreated its silent baseline | Pass | 2026-08-25T23:09Z |
+| Capitol fresh launch | Confirm one catalog banner plus 28 product cards acknowledged, zero Discord failures, and 28-row state recreated | Pass; 29 notifications | 2026-08-25T23:10Z |
 
 ### Live Role Verification
 
@@ -267,7 +271,7 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 **Validated by:** `azure-validate` workflow
 
-**Validation timestamp:** 2026-08-25T22:40Z
+**Validation timestamp:** 2026-08-25T23:02Z
 
 ---
 
@@ -288,22 +292,22 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 ## 10. Functional Verification
 
-- **Status:** Verified for validation hand-off
-- **Backend:** Python compilation, Bash syntax, diff checks, and nine unit tests passed
-  in Azure Container Registry `linux/amd64` no-push build `cb7`.
+- **Status:** Verified in production
+- **Backend:** Python compilation, Bash syntax, diff checks, and twelve unit tests passed
+  in Azure Container Registry `linux/amd64` build `cbd`.
 - **UI:** Not applicable; this is a background worker with ingress disabled.
 - **External feeds:** The Capitol Halsey collection feed returns product data. Girl in
   the Tower correctly returns `401` while password-protected and will use controlled
   retries until it opens.
-- **Discord:** The Key Vault-backed webhook accepted a real validation message with
-  HTTP `204`; mentions and automatic embeds were disabled.
-- **Build:** ACR Task run `cb7` succeeded on 2026-08-25.
+- **Discord:** All four Key Vault-backed webhooks are unique and reachable. Capitol's
+  fresh launch produced 29 acknowledged notifications with zero delivery failures.
+- **Build:** ACR Task run `cbd` succeeded on 2026-08-25.
 
 ---
 
 ## 11. Next Steps
 
-> Current: Ready for four-channel validation
+> Current: Four-channel Discord deployment complete
 
-1. Run `azure-validate` for the four-channel revision.
-2. Deploy, verify routing, then delete the eight approved state blobs.
+1. Keep Girl EU, UK, and US monitors on their controlled `401` retry cycle until the
+   storefront opens; each will announce its full catalog to its own channel.
