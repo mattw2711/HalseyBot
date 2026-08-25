@@ -111,6 +111,10 @@ new IaC or an AZD environment would add migration risk without improving this ch
     advances.
 17. Remove X-only dependencies and documentation. On deployment, the seven pending
     Capitol detections will be rediscovered, delivered to Discord, and then persisted.
+18. Render each product as a native Discord embed containing the primary Shopify image,
+    price, status, and destination link. Continue suppressing mentions.
+19. After the rich-embed revision is healthy, perform one explicit replay of the seven
+    previously acknowledged Capitol products without altering their saved state.
 
 The new Shopify store is currently password-protected. The worker will not bypass the
 password; it will retry at a low frequency and automatically become reactive when the
@@ -162,8 +166,14 @@ because the resource delta is zero and no quota-controlled capacity is requested
 - [x] Store the Discord webhook URL in Key Vault
 - [x] Remove X-only dependencies and update operating documentation
 - [x] Update plan status to `Ready for Validation`
+- [x] Add native Discord product embeds and image coverage
+- [x] Update plan status to `Ready for Validation`
 
 ### Phase 3: Validation
+- [x] Re-run `azure-validate` for rich Discord product embeds
+  - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
+  - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
+  - [x] 3. Azure Policy Validation
 - [x] Re-run `azure-validate` for the Discord migration
   - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
   - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
@@ -179,8 +189,8 @@ because the resource delta is zero and no quota-controlled capacity is requested
 - [x] Record updated validation proof below
 
 ### Phase 4: Deployment
-- [ ] Invoke `azure-deploy` for the Discord revision
-- [ ] Verify Discord delivery, state recovery, one ready replica, and zero restarts
+- [x] Invoke `azure-deploy` for the Discord revision
+- [x] Verify Discord delivery, state recovery, one ready replica, and zero restarts
 - [x] Invoke `azure-deploy`
 - [x] Build and push an immutable image
 - [x] Disable ingress and deploy one worker replica
@@ -213,10 +223,25 @@ because the resource delta is zero and no quota-controlled capacity is requested
 | Discord managed identity | Confirm the live Container App principal has Key Vault secret `Get` and `List` access | Pass | 2026-08-25T22:31Z |
 | Discord Azure Policy | `az policy assignment list --subscription 91bb5510-5bb1-4f85-a022-12f907612b87` | Pass; only Defender default assignment | 2026-08-25T22:31Z |
 | Discord IaC validation/what-if | No resource or IaC changes; application revision only | Not applicable | 2026-08-25T22:31Z |
+| Discord production deployment | ACR build `cb8`; deploy image `20260825223332-55f1ecb` | Pass | 2026-08-25T22:35Z |
+| Discord live revision | Verify `halseybot--0000015`, one ready replica, zero restarts, no ingress, and fixed one-replica scale | Pass | 2026-08-25T22:36Z |
+| Pending Capitol delivery | Verify one bulk alert and all seven missing products logged as `Notified Discord` | Pass | 2026-08-25T22:36Z |
+| Capitol state recovery | Download `capitol-halsey-products-us.csv` after acknowledgements and count products | Pass; restored from 21 to 28 | 2026-08-25T22:36Z |
+| Rich Discord embed image | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` (run `cb9`) | Pass; ten tests including image and no-image payloads | 2026-08-25T22:38Z |
+| Rich embed source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T22:38Z |
+| Rich embed Azure target | Verify subscription, running Container App, disabled ingress, single revision, fixed one-replica scale, ACR build `cb9`, and policy assignments | Pass | 2026-08-25T22:40Z |
+
+### Live Role Verification
+
+- Container App identity `06f8ad24-606e-4264-a42c-977a9114bc90` retains Key Vault
+  secret `Get` and `List` access for the storage connection string and Discord webhook.
+- Blob Storage and ACR continue using their existing secret-backed configuration; no RBAC
+  or resource changes were introduced by this application revision.
+- **Status:** Pass
 
 **Validated by:** `azure-validate` workflow
 
-**Validation timestamp:** 2026-08-25T22:32Z
+**Validation timestamp:** 2026-08-25T22:40Z
 
 ---
 
@@ -252,7 +277,7 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 ## 11. Next Steps
 
-> Current: Validated
+> Current: Rich embeds validated
 
-1. Run the `azure-validate` workflow for the Discord revision.
-2. Deploy and verify the Discord revision.
+1. Validate the rich Discord embed payload.
+2. Deploy and verify the updated revision without replaying acknowledged products.

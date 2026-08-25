@@ -4,14 +4,19 @@ from unittest.mock import patch
 from main import (
     DiscordWebhookError,
     Store,
-    build_notification_text,
+    build_discord_payload,
     calculate_retry_delay,
     classify_products,
     publish_discord_notification,
 )
 
 
-def product(handle: str, available: bool, price: str = "20.00") -> dict:
+def product(
+    handle: str,
+    available: bool,
+    price: str = "20.00",
+    image_url: str | None = "https://cdn.example/product.jpg",
+) -> dict:
     return {
         "title": handle.replace("-", " "),
         "handle": handle,
@@ -22,6 +27,7 @@ def product(handle: str, available: bool, price: str = "20.00") -> dict:
                 "id": f"{handle}-variant",
             }
         ],
+        "images": [{"src": image_url}] if image_url else [],
     }
 
 
@@ -120,7 +126,7 @@ class RetryTests(unittest.TestCase):
 
 
 class NotificationFormattingTests(unittest.TestCase):
-    def test_uses_locale_specific_product_link(self) -> None:
+    def test_builds_rich_embed_with_locale_link_and_image(self) -> None:
         store = Store(
             region="EU",
             base_url="https://www.girlinthetower.com/en-eu",
@@ -131,14 +137,37 @@ class NotificationFormattingTests(unittest.TestCase):
             announce_initial_products=True,
         )
 
-        text = build_notification_text(
+        payload = build_discord_payload(
             product("tower-shirt", True), "NEW PRODUCT", store
         )
+        embed = payload["embeds"][0]
 
-        self.assertIn("€20.00", text)
-        self.assertIn(
-            "https://www.girlinthetower.com/en-eu/products/tower-shirt", text
+        self.assertEqual(payload["allowed_mentions"], {"parse": []})
+        self.assertEqual(embed["description"], "**Price:** €20.00")
+        self.assertEqual(
+            embed["url"],
+            "https://www.girlinthetower.com/en-eu/products/tower-shirt",
         )
+        self.assertEqual(
+            embed["image"]["url"], "https://cdn.example/product.jpg"
+        )
+
+    def test_omits_image_when_storefront_has_none(self) -> None:
+        store = Store(
+            region="US",
+            base_url="https://example.com",
+            feed_path="/products.json",
+            state_blob="state.csv",
+            currency="$",
+            flag="🇺🇸",
+            announce_initial_products=True,
+        )
+
+        payload = build_discord_payload(
+            product("no-image", True, image_url=None), "NEW PRODUCT", store
+        )
+
+        self.assertNotIn("image", payload["embeds"][0])
 
 
 class FakeResponse:
@@ -201,8 +230,14 @@ class DiscordPublishingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(session.url, "https://discord.example/webhook")
         self.assertEqual(session.payload["allowed_mentions"], {"parse": []})
-        self.assertEqual(session.payload["flags"], 4)
-        self.assertIn("https://example.com/products/new-item", session.payload["content"])
+        self.assertEqual(
+            session.payload["embeds"][0]["url"],
+            "https://example.com/products/new-item",
+        )
+        self.assertEqual(
+            session.payload["embeds"][0]["image"]["url"],
+            "https://cdn.example/product.jpg",
+        )
 
     async def test_surfaces_discord_retry_after(self) -> None:
         session = FakeSession(

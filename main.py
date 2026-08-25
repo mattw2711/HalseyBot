@@ -288,27 +288,44 @@ async def check_store(
     return len(products), len(changes), previous_products is None
 
 
-def build_notification_text(product: Product, status: str, store: Store) -> str:
+def build_discord_payload(
+    product: Product, status: str, store: Store
+) -> dict[str, Any]:
     if status == "MULTIPLE NEW PRODUCTS":
-        return "🚨 Lots of new items have dropped! Individual posts to follow 🚨"
+        return {
+            "content": "🚨 Lots of new items have dropped! Individual posts to follow 🚨",
+            "allowed_mentions": {"parse": []},
+        }
 
-    title = str(product["title"]).title()
+    title = str(product["title"]).strip()
     variants = product.get("variants", [])
     if not variants:
         raise ValueError(f"Product {product.get('handle', '<unknown>')} has no variants")
 
     variant = variants[0]
-    if status == "OUT OF STOCK":
-        link = ""
-    elif "signed" in title.casefold():
-        link = f"🔗 Instant Checkout\n{store.base_url}/cart/{variant['id']}:1"
+    if "signed" in title.casefold() and status != "OUT OF STOCK":
+        link = f"{store.base_url}/cart/{variant['id']}:1"
     else:
-        link = f"🔗 {store.base_url}/products/{product['handle']}"
+        link = f"{store.base_url}/products/{product['handle']}"
 
-    return (
-        f"{store.flag} {status} {store.flag}\n"
-        f"{title} - {store.currency}{variant['price']}\n{link}"
-    ).rstrip()
+    embed: dict[str, Any] = {
+        "title": title,
+        "url": link,
+        "description": f"**Price:** {store.currency}{variant['price']}",
+        "color": 0xED4245 if "OUT OF STOCK" in status else 0x57F287,
+        "footer": {"text": store.region},
+    }
+    images = product.get("images", [])
+    if images and isinstance(images[0], dict):
+        image_url = images[0].get("src")
+        if isinstance(image_url, str) and image_url:
+            embed["image"] = {"url": image_url}
+
+    return {
+        "content": f"{store.flag} **{status}** {store.flag}",
+        "embeds": [embed],
+        "allowed_mentions": {"parse": []},
+    }
 
 
 async def publish_discord_notification(
@@ -318,19 +335,15 @@ async def publish_discord_notification(
     status: str,
     store: Store,
 ) -> None:
-    message = build_notification_text(product, status, store)
+    payload = build_discord_payload(product, status, store)
+    summary = str(payload["content"])
     if DRY_RUN:
-        print(f"[DRY RUN] Would notify Discord: {message}", flush=True)
+        print(f"[DRY RUN] Would notify Discord: {summary}", flush=True)
         return
 
-    payload = {
-        "content": message,
-        "allowed_mentions": {"parse": []},
-        "flags": 4,
-    }
     async with session.post(webhook_url, json=payload) as response:
         if response.status in {200, 204}:
-            print(f"Notified Discord: {message}", flush=True)
+            print(f"Notified Discord: {summary}", flush=True)
             return
 
         retry_after = parse_retry_after(response.headers.get("Retry-After"))

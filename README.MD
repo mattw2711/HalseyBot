@@ -28,7 +28,8 @@ Capitol Halsey collection is saved silently, and only later changes are announce
 - Blob Storage calls run outside the asyncio event loop.
 - Discord notifications reuse the worker's asynchronous HTTP session.
 - Product state advances only after queued Discord notifications are delivered.
-- Discord mentions and automatic link previews are disabled.
+- Discord mentions are disabled, while native product embeds include the primary
+  storefront image, price, status, and product link.
 - HTTP ingress is disabled because this is a background worker, not a web app.
 - Routine success logs are emitted every five minutes rather than every poll.
 - The Python dependency graph and base container digest are pinned.
