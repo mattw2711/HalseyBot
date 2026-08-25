@@ -1,85 +1,125 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Exit on any error
-set -e
+set -euo pipefail
 
-# Step 0: Check if Docker is running and start if needed
-echo "Checking Docker status..."
-if ! docker info > /dev/null 2>&1; then
-    echo "Docker is not running. Starting Docker..."
-    open -a Docker
-    echo "Waiting for Docker to start..."
-    timeout=60  # 60 second timeout
-    elapsed=0
-    while ! docker info > /dev/null 2>&1; do
-        sleep 2
-        elapsed=$((elapsed + 2))
-        if [ $elapsed -ge $timeout ]; then
-            echo "Error: Docker failed to start within $timeout seconds"
-            exit 1
-        fi
-        echo "Still waiting for Docker... ($elapsed/$timeout seconds)"
-    done
-    echo "Docker is now running!"
-else
-    echo "Docker is already running!"
-fi
+subscription_id="91bb5510-5bb1-4f85-a022-12f907612b87"
+resource_group="halseybot-rg"
+app_name="halseybot"
+registry_name="halseybotacr"
+repository="halseybot"
 
-# Step 0.5: Verify Azure CLI is logged in
-echo "Verifying Azure CLI authentication..."
-if ! az account show > /dev/null 2>&1; then
-    echo "Error: Not logged into Azure CLI. Please run 'az login' first."
+for command in az git python3; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        echo "Error: required command '$command' is not installed." >&2
+        exit 1
+    fi
+done
+
+az account set --subscription "$subscription_id"
+current_subscription="$(az account show --query id -o tsv)"
+if [[ "$current_subscription" != "$subscription_id" ]]; then
+    echo "Error: Azure CLI is using the wrong subscription." >&2
     exit 1
 fi
-echo "Azure CLI authenticated successfully!"
 
-# Step 1: Rebuild the Docker image targeting linux/amd64 with timestamped tag
-echo "Building Docker image..."
-tag=$(date +%s)
-docker build --platform linux/amd64 -t halseybot:$tag .
+tag="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
+remote_image="${registry_name}.azurecr.io/${repository}:${tag}"
 
-# Step 2: Tag the Docker image for Azure Container Registry
-echo "Tagging Docker image for Azure Container Registry..."
-docker tag halseybot:$tag halseybotacr.azurecr.io/halseybot:$tag
+echo "Building, testing, and pushing ${remote_image} with Azure Container Registry..."
+az acr build \
+    --registry "$registry_name" \
+    --image "${repository}:${tag}" \
+    --platform linux/amd64 \
+    --only-show-errors \
+    .
 
-# Step 3: Log in to Azure Container Registry and push the image
-echo "Logging into Azure Container Registry..."
-az acr login --name halseybotacr
-echo "Pushing Docker image to Azure Container Registry..."
-docker push halseybotacr.azurecr.io/halseybot:$tag
+echo "Configuring Container Apps as a single-revision background worker..."
+az containerapp revision set-mode \
+    --name "$app_name" \
+    --resource-group "$resource_group" \
+    --mode single \
+    --output none
+az containerapp ingress disable \
+    --name "$app_name" \
+    --resource-group "$resource_group" \
+    --output none
 
-# Step 4: Update the Azure Container App with the new image (no stopping needed)
-echo "Updating Azure Container App with new image..."
+template_file="$(mktemp)"
+trap 'rm -f "$template_file"' EXIT
+az containerapp show \
+    --name "$app_name" \
+    --resource-group "$resource_group" \
+    --output json |
+    REMOTE_IMAGE="$remote_image" python3 -c '
+import json
+import os
+import sys
+
+app = json.load(sys.stdin)
+template = app["properties"]["template"]
+for container in template["containers"]:
+    if container["name"] == "halseybot":
+        container["image"] = os.environ["REMOTE_IMAGE"]
+        break
+else:
+    raise SystemExit("Container halseybot was not found")
+
+scale = template.setdefault("scale", {})
+scale["minReplicas"] = 1
+scale["maxReplicas"] = 1
+scale["rules"] = []
+json.dump({"properties": {"template": template}}, sys.stdout)
+' >"$template_file"
+
+echo "Deploying ${remote_image} with one fixed replica and no scale triggers..."
 az containerapp update \
-  --name halseybot \
-  --resource-group halseybot-rg \
-  --image halseybotacr.azurecr.io/halseybot:$tag \
-  --min-replicas 1 \
-  --max-replicas 1
+    --name "$app_name" \
+    --resource-group "$resource_group" \
+    --yaml "$template_file" \
+    --output none
 
-# Step 5: Wait for deployment to complete and verify it's running
-echo "Waiting for deployment to complete..."
-sleep 20
-echo "Verifying deployment status..."
-status=$(az containerapp show --name halseybot --resource-group halseybot-rg --query "properties.runningStatus" -o tsv)
-if [ "$status" = "Running" ]; then
-    echo "✅ Deployment successful! Container app is running."
-    echo "🌐 App URL: $(az containerapp show --name halseybot --resource-group halseybot-rg --query "properties.configuration.ingress.fqdn" -o tsv)"
-else
-    echo "⚠️  Warning: Container app status is: $status"
-    echo "Check logs with: az containerapp logs show --name halseybot --resource-group halseybot-rg --tail 50"
-fi
+revision="$(az containerapp show \
+    --name "$app_name" \
+    --resource-group "$resource_group" \
+    --query properties.latestRevisionName \
+    --output tsv)"
 
-active=$(az containerapp revision list --name halseybot --resource-group halseybot-rg --query "[?properties.active==\`true\`].name" -o tsv)
-if [ -z "$active" ]; then
-    echo "No active revision found. Reactivating the latest revision..."
-    latest=$(az containerapp revision list --name halseybot --resource-group halseybot-rg --query "[-1].name" -o tsv)
-    if [ -n "$latest" ]; then
-        az containerapp revision activate --name halseybot --resource-group halseybot-rg --revision $latest
-        echo "Reactivated revision: $latest"
-    else
-        echo "Error: No revisions available to activate."
+echo "Waiting for revision ${revision} to become healthy..."
+for _ in {1..60}; do
+    health="$(az containerapp revision show \
+        --name "$app_name" \
+        --resource-group "$resource_group" \
+        --revision "$revision" \
+        --query properties.healthState \
+        --output tsv)"
+    if [[ "$health" == "Healthy" ]]; then
+        running_status="$(az containerapp show \
+            --name "$app_name" \
+            --resource-group "$resource_group" \
+            --query properties.runningStatus \
+            --output tsv)"
+        if [[ "$running_status" == "Running" ]]; then
+            echo "Deployment succeeded: ${revision} is healthy and running."
+            exit 0
+        fi
     fi
-fi
+    if [[ "$health" == "Unhealthy" ]]; then
+        break
+    fi
+    sleep 5
+done
 
-echo "Deployment complete!"
+echo "Deployment failed: revision ${revision} did not become healthy." >&2
+az containerapp revision show \
+    --name "$app_name" \
+    --resource-group "$resource_group" \
+    --revision "$revision" \
+    --query "properties.{healthState:healthState,provisioningState:provisioningState}" \
+    --output table >&2
+az containerapp logs show \
+    --name "$app_name" \
+    --resource-group "$resource_group" \
+    --type system \
+    --tail 30 \
+    --format json >&2 || true
+exit 1

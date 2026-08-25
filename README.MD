@@ -1,142 +1,91 @@
-# HalseyBot - Azure Container App
+# HalseyBot
 
-This project is a Python bot that monitors a website for product changes and posts updates to Twitter. It runs continuously on Azure Container Apps using a Dockerized container.
+HalseyBot is an asynchronous Python worker that monitors the Girl in the Tower
+Shopify storefront and posts product and inventory changes to Twitter. It runs as
+one always-on Azure Container Apps Consumption replica.
 
----
+## Storefronts
 
-## 🚀 Project Structure
+| Region | Feed | State blob | Initial behavior |
+|--------|------|------------|------------------|
+| EU | `https://www.girlinthetower.com/en-eu/products.json` | `girlinthetower-products-eu.csv` | Announce all products |
+| UK | `https://www.girlinthetower.com/en-uk/products.json` | `girlinthetower-products-uk.csv` | Announce all products |
+| US | `https://www.girlinthetower.com/products.json` | `girlinthetower-products-us.csv` | Announce all products |
+| Capitol US | `https://shop.capitolmusic.com/collections/halsey/products.json` | `capitol-halsey-products-us.csv` | Silent baseline |
 
-```
-HalseyBot/
-├── main.py               # The main async bot logic
-├── requirements.txt      # Python dependencies
-├── Dockerfile            # Defines the container image
-├── .env (local)          # Environment variables (not committed)
-└── README.md             # You're reading it!
-```
+The store is currently password-protected. The worker treats `401` and `403`
+responses as expected temporary conditions and retries every five minutes. Once
+the store is public, it automatically switches to the normal polling interval.
+When that happens, the initial Girl in the Tower catalog is announced. The existing
+Capitol Halsey collection is saved silently, and only later changes are announced.
 
----
+## Runtime behavior
 
-## 🔁 Redeploying After Code Changes
+- Each storefront is monitored independently.
+- Successful checks run every 10 seconds by default.
+- Rate limits honor `Retry-After`.
+- Transient failures use capped exponential backoff and jitter.
+- Blob Storage and Twitter SDK calls run outside the asyncio event loop.
+- Product state advances only after queued tweets are published successfully.
+- HTTP ingress is disabled because this is a background worker, not a web app.
+- Routine success logs are emitted every five minutes rather than every poll.
+- The Python dependency graph and base container digest are pinned.
 
-The deploy.sh script can be ran to build, tag, push and deploy code changes
+Optional environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `POLL_INTERVAL_SECONDS` | `10` | Delay after successful checks |
+| `PROTECTED_RETRY_SECONDS` | `300` | Delay while the store is protected |
+| `RATE_LIMIT_RETRY_SECONDS` | `60` | Delay for `429` without `Retry-After` |
+| `MAX_BACKOFF_SECONDS` | `300` | Maximum transient-failure delay |
+| `HEARTBEAT_INTERVAL_SECONDS` | `300` | Routine success-log interval |
+| `DRY_RUN` | `false` | Log tweets without publishing |
+| `KEY_VAULT_URL` | `https://halseybot-keys.vault.azure.net/` | Secret source |
+
+## Local checks
 
 ```bash
-./deploy.sh
+python -m unittest discover -s tests -v
+python -m py_compile main.py
 ```
 
-Note: If the file is not executable you must run the following first:
-
-```bash
-chmod +x deploy.sh
-```
-
----
-
-## 🔁 Redeploying After Code Changes (Manually)
-
-Whenever you make changes to the bot’s code and want to redeploy it to Azure, follow these steps:
-
-### ✅ 1. Rebuild the Docker image (targeting `linux/amd64`)
-```bash
-docker build --platform linux/amd64 -t halseybot .
-```
-
-### ✅ 2. Tag the image for Azure Container Registry
-```bash
-docker tag halseybot halseybotacr.azurecr.io/halseybot:latest
-```
-
-### ✅ 3. Push the image to Azure Container Registry
-```bash
-az acr login --name halseybotacr
-docker push halseybotacr.azurecr.io/halseybot:latest
-```
-
-### ✅ 4. Update the Azure Container App
-```bash
-az containerapp update \
-  --name halseybot \
-  --resource-group halseybot-rg \
-  --image halseybotacr.azurecr.io/halseybot:latest
-```
-
----
-
-## 🔐 Environment Variables
-
-Environment variables like the Azure Blob Storage connection string should be passed securely.
-
-### Set environment variable in Azure:
-```bash
-az containerapp update \
-  --name halseybot \
-  --resource-group halseybot-rg \
-  --set-env-vars AZURE_STORAGE_CONNECTION_STRING="your-connection-string"
-```
-
-In code (`main.py`):
-```python
-import os
-CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-```
-
----
-
-## 📦 Dependency Management
-
-To add new Python packages:
-
-1. Install locally:
-```bash
-pip install somepackage
-```
-
-2. Freeze the updated list:
-```bash
-pip freeze > requirements.txt
-```
-
-3. Rebuild and redeploy the container as described above.
-
----
-
-## 🧪 Running Locally
-
-You can also test the bot locally with:
+Running the full worker locally also requires access to the Azure Key Vault and
+Blob Storage resources:
 
 ```bash
 python main.py
 ```
 
-To use your `.env` file:
+## Deployment
+
+The deployment script uses Azure Container Registry Tasks to build an immutable
+`linux/amd64` image. The Docker build runs the test suite before publishing the image.
+The script then configures the Container App as a single-revision worker without
+ingress, clears all autoscale triggers, hard-caps one replica, and waits for the
+revision to become healthy.
+
 ```bash
-pip install python-dotenv
+./deploy.sh
 ```
 
-Then load it in `main.py`:
-```python
-from dotenv import load_dotenv
-load_dotenv()
-```
-
----
-
-## 📖 Logs & Monitoring
-
-View container logs in real-time:
+View application logs:
 
 ```bash
 az containerapp logs show \
   --name halseybot \
   --resource-group halseybot-rg \
-  --follow
+  --tail 100 \
+  --format text
 ```
 
----
+View platform events:
 
-## ✅ Notes
-
-- Make sure your Docker image is always built for `linux/amd64` (Azure requirement).
-- Avoid hardcoding secrets — use environment variables or managed identities.
-- Azure Container Apps will keep your bot running continuously unless the app crashes or is updated.
+```bash
+az containerapp logs show \
+  --name halseybot \
+  --resource-group halseybot-rg \
+  --type system \
+  --tail 100 \
+  --format json
+```
