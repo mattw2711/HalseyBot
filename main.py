@@ -1,292 +1,478 @@
-from urllib import response
-import tweepy
+from __future__ import annotations
+
+import asyncio
 import csv
 import io
+import itertools
 import os
-import asyncio
+import random
+import time
+from dataclasses import dataclass
+from typing import Any
+
 import aiohttp
 import tweepy
-from azure.storage.blob import BlobServiceClient
-from azure.identity import ManagedIdentityCredential
+from azure.core.exceptions import AzureError
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-import itertools
-import ssl
-import certifi
+from azure.storage.blob import BlobServiceClient, ContainerClient
 
-counter = itertools.count()
-import os
 
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
-
-keyvault_url = "https://halseybot-keys.vault.azure.net/"
-credential = DefaultAzureCredential()
-secret_client = SecretClient(vault_url=keyvault_url, credential=credential)
-
-
-def initialiseBlobStorage(connection_string):
-    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-    container_client = blob_service_client.get_container_client("merchbotproducts")
-
-    return container_client
-
-
-def initialise():
-    # Halsey Watch Twitter API credentials
-    API_KEY = secret_client.get_secret("api-key").value
-    API_SECRET_KEY = secret_client.get_secret("api-key-secret").value
-    ACCESS_TOKEN = secret_client.get_secret("access-token").value
-    ACCESS_TOKEN_SECRET = secret_client.get_secret("access-token-secret").value
-    BEARER_TOKEN = secret_client.get_secret("bearer-token").value
-
-    # Set up tweepy client for OAuth 2.0 User Context
-    client = tweepy.Client(
-        bearer_token=BEARER_TOKEN,
-        consumer_key=API_KEY,
-        consumer_secret=API_SECRET_KEY,
-        access_token=ACCESS_TOKEN,
-        access_token_secret=ACCESS_TOKEN_SECRET,
-        wait_on_rate_limit=True,
-    )
-
-    return client
+KEY_VAULT_URL = os.getenv(
+    "KEY_VAULT_URL", "https://halseybot-keys.vault.azure.net/"
+)
+POLL_INTERVAL_SECONDS = max(1.0, float(os.getenv("POLL_INTERVAL_SECONDS", "10")))
+PROTECTED_RETRY_SECONDS = max(
+    POLL_INTERVAL_SECONDS, float(os.getenv("PROTECTED_RETRY_SECONDS", "300"))
+)
+MAX_BACKOFF_SECONDS = max(
+    POLL_INTERVAL_SECONDS, float(os.getenv("MAX_BACKOFF_SECONDS", "300"))
+)
+RATE_LIMIT_RETRY_SECONDS = max(
+    POLL_INTERVAL_SECONDS, float(os.getenv("RATE_LIMIT_RETRY_SECONDS", "60"))
+)
+HEARTBEAT_INTERVAL_SECONDS = max(
+    POLL_INTERVAL_SECONDS, float(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "300"))
+)
 
 
-# EU URL
-url_EU = "https://www.halseymusicstore.eu"
-previous_products_file_EU = "previous_productsEU.csv"
+@dataclass(frozen=True)
+class Store:
+    region: str
+    base_url: str
+    feed_path: str
+    state_blob: str
+    currency: str
+    flag: str
+    announce_initial_products: bool
 
-# US URL
-url_US = "https://www.halseymusicstore.com"
-previous_products_file_US = "previous_productsUS.csv"
+    @property
+    def products_url(self) -> str:
+        return f"{self.base_url}{self.feed_path}"
 
-# UK URL
-url_UK = "https://www.halseymusicstore.co.uk"
-previous_products_file_UK = "previous_productsUK.csv"
- 
-# Global URL
-url_Global = "https://www.halseymusicstore.com"
-previous_products_file_Global = "previous_productsGlobal.csv"
 
-global container_client
-global halseyWatch
-tweet_queue = asyncio.PriorityQueue()
+STORES = (
+    Store(
+        region="EU",
+        base_url="https://www.girlinthetower.com/en-eu",
+        feed_path="/products.json?limit=250",
+        state_blob="girlinthetower-products-eu.csv",
+        currency="€",
+        flag="🇪🇺",
+        announce_initial_products=True,
+    ),
+    Store(
+        region="UK",
+        base_url="https://www.girlinthetower.com/en-uk",
+        feed_path="/products.json?limit=250",
+        state_blob="girlinthetower-products-uk.csv",
+        currency="£",
+        flag="🇬🇧",
+        announce_initial_products=True,
+    ),
+    Store(
+        region="US",
+        base_url="https://www.girlinthetower.com",
+        feed_path="/products.json?limit=250",
+        state_blob="girlinthetower-products-us.csv",
+        currency="$",
+        flag="🇺🇸",
+        announce_initial_products=True,
+    ),
+    Store(
+        region="CAPITOL US",
+        base_url="https://shop.capitolmusic.com",
+        feed_path="/collections/halsey/products.json?limit=250",
+        state_blob="capitol-halsey-products-us.csv",
+        currency="$",
+        flag="🇺🇸",
+        announce_initial_products=False,
+    ),
+)
 
 PRIORITY_MAP = {
     "NEW PRODUCT": 0,
     "BACK IN STOCK": 1,
     "OUT OF STOCK": 2,
     "NEW PRODUCT (OUT OF STOCK)": 2,
-    "UNCHANGED": 3,
 }
 
-
-def read_previous_products(file_path):
-    blob_client = container_client.get_blob_client(os.path.basename(file_path))
-    if blob_client.exists():
-        try:
-            download_stream = blob_client.download_blob()
-            content = download_stream.readall().decode("utf-8")
-            reader = csv.reader(content.splitlines())
-            return {rows[0]: rows[1] == "True" for rows in reader}
-        except (csv.Error, IndexError):
-            # Handle empty or malformed CSV file
-            return {}
-    return {}
+Product = dict[str, Any]
+TweetQueue = asyncio.PriorityQueue[
+    tuple[int, int, tuple[Product, str, Store, asyncio.Future[None]]]
+]
 
 
-def write_current_products(file_path, products):
-    # Create an in-memory buffer
+class StoreFetchError(Exception):
+    def __init__(
+        self,
+        status: int | None,
+        message: str,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status = status
+        self.retry_after = retry_after
+
+
+def calculate_retry_delay(
+    status: int | None,
+    failures: int,
+    retry_after: float | None = None,
+) -> float:
+    if status in {401, 403}:
+        return PROTECTED_RETRY_SECONDS
+    if status == 429:
+        requested_delay = retry_after or RATE_LIMIT_RETRY_SECONDS
+        return min(
+            MAX_BACKOFF_SECONDS,
+            max(POLL_INTERVAL_SECONDS, requested_delay),
+        )
+
+    exponent = max(0, failures - 1)
+    return min(MAX_BACKOFF_SECONDS, POLL_INTERVAL_SECONDS * (2**exponent))
+
+
+def parse_retry_after(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        return None
+
+
+def read_previous_products(
+    container_client: ContainerClient, blob_name: str
+) -> dict[str, bool] | None:
+    blob_client = container_client.get_blob_client(blob_name)
+    if not blob_client.exists():
+        return None
+
+    content = blob_client.download_blob().readall().decode("utf-8")
+    products: dict[str, bool] = {}
+    for row in csv.reader(content.splitlines()):
+        if not row or row[0] == "handle":
+            continue
+        if len(row) != 2 or row[1] not in {"True", "False"}:
+            raise ValueError(f"Malformed product state in blob {blob_name}")
+        products[row[0]] = row[1] == "True"
+    return products
+
+
+def write_current_products(
+    container_client: ContainerClient,
+    blob_name: str,
+    products: dict[str, bool],
+) -> None:
     output = io.StringIO()
-
-    # Write products to the in-memory buffer as CSV
     writer = csv.writer(output)
-    for title, available in products.items():
-        writer.writerow([title, available])
-
-    # Get the CSV content from the buffer
-    csv_content = output.getvalue()
-    output.close()
-
-    # Upload the CSV content to Azure Blob Storage
-    blob_client = container_client.get_blob_client(os.path.basename(file_path))
-    blob_client.upload_blob(csv_content, overwrite=True)
-    print(f"{file_path} uploaded to Azure Blob Storage.")
+    writer.writerow(["handle", "available"])
+    writer.writerows(sorted(products.items()))
+    container_client.get_blob_client(blob_name).upload_blob(
+        output.getvalue(), overwrite=True
+    )
 
 
-def tweet(product, status, url, region):
-    title = product["title"].title()
-    handle = product["handle"]
-    price = product["variants"][0]["price"]
+def classify_products(
+    previous_products: dict[str, bool] | None,
+    products: list[Product],
+    announce_initial_products: bool,
+) -> tuple[dict[str, bool], list[tuple[Product, str]]]:
+    current_products: dict[str, bool] = {}
+    changes: list[tuple[Product, str]] = []
 
-    if status == "OUT OF STOCK":
-        link = ""
-    elif "Signed" in title:
-        link = f"🔗 Instant Checkout \n {url}/cart/{product['variants'][0]['id']}:1"
-    else:
-        link = f"🔗 {url}/products/{handle}"
+    for product in products:
+        handle = product["handle"]
+        variants = product.get("variants", [])
+        available = any(bool(variant.get("available")) for variant in variants)
+        current_products[handle] = available
 
-    # Set currency and flag depending on url
-    if region == "EU":
-        currency = "€"
-        flag = "🇪🇺"
-    elif region == "UK":
-        currency = "£"
-        flag = "🇬🇧"
-    elif region == "US":
-        currency = "$"
-        flag = "🇺🇸"
-    else:
-        currency = "€"
-        flag = "🌐"
+        if previous_products is None and not announce_initial_products:
+            continue
+        if previous_products is None or handle not in previous_products:
+            status = "NEW PRODUCT" if available else "NEW PRODUCT (OUT OF STOCK)"
+            changes.append((product, status))
+        elif previous_products[handle] != available:
+            status = "BACK IN STOCK" if available else "OUT OF STOCK"
+            changes.append((product, status))
 
-    tweet_text = f"{flag} {status.upper()} {flag}\n{title} - {currency}{price}\n{link}"
-
-    if DRY_RUN:
-        print(f"[DRY RUN] Would tweet: {tweet_text}")
-        return
-
-    try:
-        response = halseyWatch.create_tweet(text=tweet_text)
-        if response.errors:
-            raise Exception(f"Request returned an error: {response.errors}")
-        print(f"Tweeted: {tweet_text}")
-    except tweepy.TweepyException as e:
-        print(f"Error tweeting: {e}")
+    return current_products, changes
 
 
-async def fetch_products(session, url):
-    async with session.get(url + "/products.json") as response:
-        response.raise_for_status()
-        return await response.json()
-
-
-async def check_for_new_products(file_path, url, region):
-    previous_products = read_previous_products(file_path)
-    try:
-        # Create SSL context with proper certificates
-        ssl_context = ssl.create_default_context(cafile=certifi.where())
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
-        
-        async with aiohttp.ClientSession(connector=connector) as session:
-            data = await fetch_products(session, url)
-
-        current_products = {}
-        for item in data["products"]:
-            title = item["title"]
-            current_products[title] = any(
-                variant["available"] for variant in item["variants"]
+async def fetch_products(
+    session: aiohttp.ClientSession, store: Store
+) -> list[Product]:
+    async with session.get(store.products_url) as response:
+        if response.status != 200:
+            raise StoreFetchError(
+                status=response.status,
+                message=f"HTTP {response.status}",
+                retry_after=parse_retry_after(response.headers.get("Retry-After")),
             )
 
-        new_products = set(current_products.keys()) - set(previous_products.keys())
-        restocked_products = {
-            title
-            for title in current_products
-            if title in previous_products
-            and not previous_products[title]
-            and current_products[title]
+        payload = await response.json(content_type=None)
+        products = payload.get("products")
+        if not isinstance(products, list):
+            raise ValueError("Store response did not contain a products list")
+        return products
+
+
+async def check_store(
+    session: aiohttp.ClientSession,
+    container_client: ContainerClient,
+    tweet_queue: TweetQueue,
+    sequence: itertools.count[int],
+    store: Store,
+) -> tuple[int, int, bool]:
+    previous_products = await asyncio.to_thread(
+        read_previous_products, container_client, store.state_blob
+    )
+    products = await fetch_products(session, store)
+    current_products, changes = classify_products(
+        previous_products, products, store.announce_initial_products
+    )
+    acknowledgements: list[asyncio.Future[None]] = []
+
+    new_product_count = sum(
+        status.startswith("NEW PRODUCT") for _, status in changes
+    )
+    if new_product_count > 5:
+        alert = {
+            "title": "Lots of new items have dropped!",
+            "handle": "",
+            "variants": [{"price": "", "available": True, "id": ""}],
         }
-        out_of_stock_products = {
-            title
-            for title in previous_products
-            if title in current_products
-            and previous_products[title]
-            and not current_products[title]
-        }
-        unchanged_products = {
-            title
-            for title in current_products
-            if title in previous_products
-            and previous_products[title] == current_products[title]
-        }
+        acknowledgement = asyncio.get_running_loop().create_future()
+        acknowledgements.append(acknowledgement)
+        await tweet_queue.put((
+            -1,
+            next(sequence),
+            (alert, "MULTIPLE NEW PRODUCTS", store, acknowledgement),
+        ))
 
-        # Send alert tweet if more than 5 new products
-        if DRY_RUN:
-            if len(new_products) > 5:
-                print("[DRY RUN] Would tweet: 🚨 Lots of new items have dropped! 🚨")
-        else:
-            if len(new_products) > 5:
-                try:
-                    response = halseyWatch.create_tweet(text="🚨 Lots of new items have dropped! Individual posts to follow 🚨")
-                    if response.errors:
-                        raise Exception(f"Request returned an error: {response.errors}")
-                    print("Tweeted: 🚨 Lots of new items have dropped!")
-                except tweepy.TweepyException as e:
-                    print(f"Error tweeting alert: {e}")
-
-
-        for item in data["products"]:
-            title = item["title"]
-            status = ""
-            if title in unchanged_products:
-                # print(f"Product unchanged: {title}")
-                status = "UNCHANGED"
-            elif title in new_products and current_products[title]:
-                # print(f"New product added: {title}")
-                status = "NEW PRODUCT"
-            elif title in new_products and not current_products[title]:
-                # print(f"New product added but out of stock: {title}")
-                status = "NEW PRODUCT (OUT OF STOCK)"
-            elif title in restocked_products:
-                # print(f"Product back in stock: {title}")
-                status = "BACK IN STOCK"
-            elif title in out_of_stock_products:
-                # print(f"Product out of stock: {title}")
-                status = "OUT OF STOCK"
-
-            # print(status)
-
-            if status != "UNCHANGED":
-                priority = PRIORITY_MAP.get(status, 99)
-                await tweet_queue.put((priority, next(counter), (item, status, url, region)))
-
-        if current_products != previous_products:
-            write_current_products(file_path, current_products)
-
-        print("Ran " + url)
-    except aiohttp.ClientError as e:
-        print(f"Error fetching products: {e}")
-
-
-async def run_checks():
-    while True:
-        await asyncio.gather(
-            check_for_new_products(file_path=previous_products_file_EU, url=url_EU, region="EU"),
-            check_for_new_products(file_path=previous_products_file_UK, url=url_UK, region="UK"),
-            check_for_new_products(file_path=previous_products_file_US, url=url_US, region="US"),
-            #check_for_new_products(file_path=previous_products_file_Global, url=url_Global, region="Global"),
+    for product, status in changes:
+        acknowledgement = asyncio.get_running_loop().create_future()
+        acknowledgements.append(acknowledgement)
+        await tweet_queue.put(
+            (
+                PRIORITY_MAP.get(status, 99),
+                next(sequence),
+                (product, status, store, acknowledgement),
+            )
         )
-        await asyncio.sleep(0.5)  # Sleep for half a second
+
+    if acknowledgements:
+        await asyncio.gather(*acknowledgements)
+
+    if previous_products is None or current_products != previous_products:
+        await asyncio.to_thread(
+            write_current_products,
+            container_client,
+            store.state_blob,
+            current_products,
+        )
+
+    return len(products), len(changes), previous_products is None
 
 
-async def tweet_worker():
+def build_tweet_text(product: Product, status: str, store: Store) -> str:
+    if status == "MULTIPLE NEW PRODUCTS":
+        return "🚨 Lots of new items have dropped! Individual posts to follow 🚨"
+
+    title = str(product["title"]).title()
+    variants = product.get("variants", [])
+    if not variants:
+        raise ValueError(f"Product {product.get('handle', '<unknown>')} has no variants")
+
+    variant = variants[0]
+    if status == "OUT OF STOCK":
+        link = ""
+    elif "signed" in title.casefold():
+        link = f"🔗 Instant Checkout\n{store.base_url}/cart/{variant['id']}:1"
+    else:
+        link = f"🔗 {store.base_url}/products/{product['handle']}"
+
+    return (
+        f"{store.flag} {status} {store.flag}\n"
+        f"{title} - {store.currency}{variant['price']}\n{link}"
+    ).rstrip()
+
+
+def publish_tweet(
+    twitter_client: tweepy.Client,
+    product: Product,
+    status: str,
+    store: Store,
+) -> None:
+    tweet_text = build_tweet_text(product, status, store)
+    if DRY_RUN:
+        print(f"[DRY RUN] Would tweet: {tweet_text}", flush=True)
+        return
+
+    response = twitter_client.create_tweet(text=tweet_text)
+    if response.errors:
+        raise tweepy.TweepyException(f"Twitter returned errors: {response.errors}")
+    print(f"Tweeted: {tweet_text}", flush=True)
+
+
+async def tweet_worker(
+    tweet_queue: TweetQueue, twitter_client: tweepy.Client
+) -> None:
     while True:
-        _, _, (product, status, url, region) = await tweet_queue.get()
+        _, _, (product, status, store, acknowledgement) = await tweet_queue.get()
+        retry_delay = 10.0
         try:
-            tweet(product, status, url, region)
-            await asyncio.sleep(2)  # Regular delay
-        except tweepy.TooManyRequests:
-            print("Rate limit hit. Sleeping for 15 minutes.")
-            await asyncio.sleep(15 * 60)
-        except tweepy.TweepyException as e:
-            print(f"Tweet error: {e}")
-            await asyncio.sleep(10)
+            while True:
+                try:
+                    await asyncio.to_thread(
+                        publish_tweet,
+                        twitter_client,
+                        product,
+                        status,
+                        store,
+                    )
+                    if not acknowledgement.done():
+                        acknowledgement.set_result(None)
+                    await asyncio.sleep(2)
+                    break
+                except tweepy.TooManyRequests:
+                    print(
+                        "Twitter rate limit hit; retrying in 15 minutes.",
+                        flush=True,
+                    )
+                    await asyncio.sleep(15 * 60)
+                except tweepy.TweepyException as error:
+                    print(
+                        f"Tweet failed ({error}); retrying in "
+                        f"{retry_delay:.0f}s.",
+                        flush=True,
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(MAX_BACKOFF_SECONDS, retry_delay * 2)
+                except ValueError as error:
+                    if not acknowledgement.done():
+                        acknowledgement.set_exception(error)
+                    break
         finally:
             tweet_queue.task_done()
 
 
-async def main():
-    global container_client
-    global halseyWatch
+async def monitor_store(
+    session: aiohttp.ClientSession,
+    container_client: ContainerClient,
+    tweet_queue: TweetQueue,
+    sequence: itertools.count[int],
+    store: Store,
+) -> None:
+    await asyncio.sleep(random.uniform(0, 2))
+    failures = 0
+    next_heartbeat = 0.0
 
-    CONNECTION_STRING = secret_client.get_secret("connection-string").value
+    while True:
+        try:
+            product_count, change_count, established_baseline = await check_store(
+                session, container_client, tweet_queue, sequence, store
+            )
+            failures = 0
+            delay = POLL_INTERVAL_SECONDS
+            now = time.monotonic()
+            if established_baseline or change_count or now >= next_heartbeat:
+                activity = (
+                    "established baseline"
+                    if established_baseline
+                    else f"queued {change_count} changes"
+                )
+                print(
+                    f"[{store.region}] Checked {product_count} products; "
+                    f"{activity}.",
+                    flush=True,
+                )
+                next_heartbeat = now + HEARTBEAT_INTERVAL_SECONDS
+        except StoreFetchError as error:
+            failures += 1
+            delay = calculate_retry_delay(
+                error.status, failures, error.retry_after
+            )
+            print(
+                f"[{store.region}] Store unavailable ({error}); "
+                f"retrying in {delay:.0f}s.",
+                flush=True,
+            )
+        except (aiohttp.ClientError, asyncio.TimeoutError, AzureError, ValueError) as error:
+            failures += 1
+            delay = calculate_retry_delay(None, failures)
+            print(
+                f"[{store.region}] Check failed ({error}); "
+                f"retrying in {delay:.0f}s.",
+                flush=True,
+            )
 
-    halseyWatch = initialise()
-    container_client = initialiseBlobStorage(CONNECTION_STRING)
-    asyncio.create_task(tweet_worker())
-    await run_checks()
+        await asyncio.sleep(delay * random.uniform(0.9, 1.1))
+
+
+def initialise_clients() -> tuple[
+    BlobServiceClient, ContainerClient, tweepy.Client
+]:
+    credential = DefaultAzureCredential()
+    secret_client = SecretClient(vault_url=KEY_VAULT_URL, credential=credential)
+    try:
+        connection_string = secret_client.get_secret("connection-string").value
+        twitter_client = tweepy.Client(
+            bearer_token=secret_client.get_secret("bearer-token").value,
+            consumer_key=secret_client.get_secret("api-key").value,
+            consumer_secret=secret_client.get_secret("api-key-secret").value,
+            access_token=secret_client.get_secret("access-token").value,
+            access_token_secret=secret_client.get_secret(
+                "access-token-secret"
+            ).value,
+            wait_on_rate_limit=True,
+        )
+    finally:
+        secret_client.close()
+        credential.close()
+
+    blob_service_client = BlobServiceClient.from_connection_string(
+        connection_string
+    )
+    container_client = blob_service_client.get_container_client(
+        "merchbotproducts"
+    )
+    return blob_service_client, container_client, twitter_client
+
+
+async def main() -> None:
+    blob_service_client, container_client, twitter_client = initialise_clients()
+    tweet_queue: TweetQueue = asyncio.PriorityQueue()
+    sequence = itertools.count()
+    timeout = aiohttp.ClientTimeout(total=20)
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "HalseyBot/2.0 (+Azure Container Apps)",
+    }
+
+    try:
+        async with aiohttp.ClientSession(
+            timeout=timeout, headers=headers
+        ) as session:
+            await asyncio.gather(
+                tweet_worker(tweet_queue, twitter_client),
+                *(
+                    monitor_store(
+                        session,
+                        container_client,
+                        tweet_queue,
+                        sequence,
+                        store,
+                    )
+                    for store in STORES
+                ),
+            )
+    finally:
+        blob_service_client.close()
 
 
 if __name__ == "__main__":
-    print("🟢 Script is running directly")
+    print("Girl in the Tower monitor starting.", flush=True)
     asyncio.run(main())
