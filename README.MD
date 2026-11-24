@@ -81,7 +81,41 @@ revision to become healthy.
 ./deploy.sh
 ```
 
-View application logs:
+### Azure sign-in troubleshooting: CorpNet and directory selection
+
+On 24 November 2026, Azure sign-in on CorpNet encountered "More information
+required" / "You cannot access this right now", with `AADSTS50079` (MFA
+enrollment required) and browser error `53003` (Conditional Access). Retrying
+tenant-specific Azure CLI sign-in from a mobile hotspot succeeded. The exact
+blocking policy was not confirmed; the network change was the observed difference,
+not proof that CorpNet alone caused the failure.
+
+An empty resource list can also mean the wrong directory or subscription is
+selected. HalseyBot is in **Default Directory**, under **Visual Studio Enterprise
+Subscription**, not the Microsoft corporate directory.
+
+If this happens again:
+
+1. Check the directory and subscription selected in the Azure portal.
+2. If permitted by your organization's policies, retry from a trusted alternative
+   network, such as a personal hotspot, using tenant-specific sign-in:
+
+   ```bash
+   az login --tenant abaa5168-14e1-4874-bd2b-e71dc30121e0 --use-device-code
+   az account set --subscription 91bb5510-5bb1-4f85-a022-12f907612b87
+   az account show --query '{subscription:name, tenant:tenantId}' --output table
+   az group show --name halseybot-rg --query name --output tsv
+   ```
+
+3. Complete any required MFA or enrollment steps through Microsoft's supported
+   sign-in flow. If access remains denied, retain the error code, timestamp,
+   correlation ID, and trace ID for the directory administrator. Do not disable
+   MFA or weaken Conditional Access policies.
+
+Confirm access to `halseybot-rg` before running `./deploy.sh`; successful sign-in
+to a corporate subscription does not establish access to HalseyBot.
+
+### Application logs
 
 ```bash
 az containerapp logs show \
