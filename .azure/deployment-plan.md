@@ -8,8 +8,8 @@ Generated: 2026-08-25T22:34:00+01:00
 
 ## 1. Project Overview
 
-**Goal:** Clean up and redeploy the HalseyBot background worker so it monitors the new
-Girl in the Tower storefront quickly, reliably, and at low cost.
+**Goal:** Run HalseyBot as a fast, reliable, low-cost storefront monitor with dedicated
+Discord channels for each storefront/location and a deliberate fresh-catalog launch.
 
 **Path:** Modernize Existing
 
@@ -104,6 +104,26 @@ new IaC or an AZD environment would add migration risk without improving this ch
 14. Remove the stale HTTP scale rule with an explicit empty rule set, retain
     `minReplicas=1` and `maxReplicas=1`, reduce routine success logs to five-minute
     heartbeats, and pin transitive dependencies plus the base image digest.
+15. Replace Tweepy and all X API credentials with one Discord webhook URL retrieved from
+    Key Vault through the existing managed identity.
+16. Publish Discord messages with link previews disabled, suppress mentions, honor
+    webhook rate-limit responses, and retain acknowledged retries before product state
+    advances.
+17. Remove X-only dependencies and documentation. On deployment, the seven pending
+    Capitol detections will be rediscovered, delivered to Discord, and then persisted.
+18. Render each product as a native Discord embed containing the primary Shopify image,
+    price, status, and destination link. Continue suppressing mentions.
+19. After the rich-embed revision is healthy, perform one explicit replay of the seven
+    previously acknowledged Capitol products without altering their saved state.
+20. Route Girl in the Tower EU, UK, and US plus Capitol US through four independent
+    webhooks stored as separate Key Vault secrets.
+21. Use one acknowledged queue and publisher task per storefront so Discord rate limits
+    or a failure in one channel cannot delay the other locations.
+22. Redesign messages with a prominent status banner, status-specific color, clear
+    price/store fields, full-width product image, and a direct product or checkout link.
+23. Make all four storefronts announce their complete first successful catalog.
+24. Only after the four-channel revision is healthy, delete the explicitly approved
+    product-state blobs so the catalogs are replayed through the correct channels.
 
 The new Shopify store is currently password-protected. The worker will not bypass the
 password; it will retry at a low frequency and automatically become reactive when the
@@ -150,8 +170,32 @@ because the resource delta is zero and no quota-controlled capacity is requested
 - [x] Update the Docker and Azure CLI deployment configuration
 - [x] Run a no-push ACR validation build (Docker is unavailable locally)
 - [x] Update plan status to `Ready for Validation`
+- [x] Replace X publishing with Discord webhook publishing
+- [x] Add Discord formatting, success, retry, and rate-limit tests
+- [x] Store the Discord webhook URL in Key Vault
+- [x] Remove X-only dependencies and update operating documentation
+- [x] Update plan status to `Ready for Validation`
+- [x] Add native Discord product embeds and image coverage
+- [x] Update plan status to `Ready for Validation`
+- [x] Configure four Key Vault-backed Discord webhooks
+- [x] Add independent per-store queues and publishers
+- [x] Redesign and test the Discord message presentation
+- [x] Enable fresh initial announcements for all four storefronts
+- [x] Update plan status to `Ready for Validation`
 
 ### Phase 3: Validation
+- [x] Re-run `azure-validate` for four-channel routing and fresh launch
+  - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
+  - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
+  - [x] 3. Azure Policy Validation
+- [x] Re-run `azure-validate` for rich Discord product embeds
+  - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
+  - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
+  - [x] 3. Azure Policy Validation
+- [x] Re-run `azure-validate` for the Discord migration
+  - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
+  - [x] 2. Docker Build (no-push ACR build because Docker is unavailable)
+  - [x] 3. Azure Policy Validation
 - [x] Re-run `azure-validate` after final scale/logging/dependency cleanup
 - [x] All validation checks pass
   - [x] 1. Core Validation (CLI, auth, build, validate; IaC what-if not applicable)
@@ -163,6 +207,8 @@ because the resource delta is zero and no quota-controlled capacity is requested
 - [x] Record updated validation proof below
 
 ### Phase 4: Deployment
+- [x] Invoke `azure-deploy` for the Discord revision
+- [x] Verify Discord delivery, state recovery, one ready replica, and zero restarts
 - [x] Invoke `azure-deploy`
 - [x] Build and push an immutable image
 - [x] Disable ingress and deploy one worker replica
@@ -188,10 +234,44 @@ because the resource delta is zero and no quota-controlled capacity is requested
 | Production deployment | ACR build `cb6`; deploy image `20260825215619-b49e375` | Pass | 2026-08-25T21:58Z |
 | Live revision | Verify `halseybot--0000014`, one active revision, one ready replica, zero restarts, no ingress, and no scale rules | Pass | 2026-08-25T21:59Z |
 | Live worker behavior | Verify Capitol checks with zero changes and Girl in the Tower `401` retries at 300 seconds | Pass | 2026-08-25T21:59Z |
+| Discord migration image | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` (run `cb7`) | Pass; nine tests and Tweepy removed | 2026-08-25T22:29Z |
+| Discord webhook | Send mention-safe, embed-suppressed validation message using Key Vault secret | Pass; HTTP 204 | 2026-08-25T22:30Z |
+| Discord source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T22:29Z |
+| Discord Azure target | Verify authenticated subscription, Container App, ACR, Key Vault secret, single revision, disabled ingress, and fixed one-replica scale | Pass | 2026-08-25T22:31Z |
+| Discord managed identity | Confirm the live Container App principal has Key Vault secret `Get` and `List` access | Pass | 2026-08-25T22:31Z |
+| Discord Azure Policy | `az policy assignment list --subscription 91bb5510-5bb1-4f85-a022-12f907612b87` | Pass; only Defender default assignment | 2026-08-25T22:31Z |
+| Discord IaC validation/what-if | No resource or IaC changes; application revision only | Not applicable | 2026-08-25T22:31Z |
+| Discord production deployment | ACR build `cb8`; deploy image `20260825223332-55f1ecb` | Pass | 2026-08-25T22:35Z |
+| Discord live revision | Verify `halseybot--0000015`, one ready replica, zero restarts, no ingress, and fixed one-replica scale | Pass | 2026-08-25T22:36Z |
+| Pending Capitol delivery | Verify one bulk alert and all seven missing products logged as `Notified Discord` | Pass | 2026-08-25T22:36Z |
+| Capitol state recovery | Download `capitol-halsey-products-us.csv` after acknowledgements and count products | Pass; restored from 21 to 28 | 2026-08-25T22:36Z |
+| Rich Discord embed image | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` (run `cb9`) | Pass; ten tests including image and no-image payloads | 2026-08-25T22:38Z |
+| Rich embed source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T22:38Z |
+| Rich embed Azure target | Verify subscription, running Container App, disabled ingress, single revision, fixed one-replica scale, ACR build `cb9`, and policy assignments | Pass | 2026-08-25T22:40Z |
+| Rich embed production deployment | ACR build `cbb`; deploy image `20260825224236-872eca1` | Pass after one transient concurrent-write retry | 2026-08-25T22:43Z |
+| Rich embed live revision | Verify `halseybot--0000016` is healthy and running | Pass | 2026-08-25T22:43Z |
+| Seven-item rich replay | Fetch the seven requested Capitol products and post one native image embed per product | Pass; seven HTTP successes and seven primary images | 2026-08-25T22:44Z |
+| Four Discord channels | Send a labeled connection message through each new Key Vault-backed webhook | Pass; EU, UK, US, and Capitol returned HTTP 204 | 2026-08-25T23:00Z |
+| Four-channel image | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` (run `cbc`) | Pass; twelve tests | 2026-08-25T23:01Z |
+| Four-channel source checks | `python3 -m py_compile main.py tests/test_main.py`; `bash -n deploy.sh`; `git diff --check` | Pass | 2026-08-25T23:00Z |
+| Four-channel Azure target | Verify subscription, running single-revision Container App, disabled ingress, fixed one-replica scale, ACR build `cbc`, and policy assignments | Pass | 2026-08-25T23:02Z |
+| Four-channel secrets | Confirm all four Key Vault secrets are enabled and managed identity retains secret `Get`/`List` access | Pass | 2026-08-25T23:02Z |
+| Four-channel production deployment | ACR build `cbd`; deploy image `20260825230329-709765f` | Pass | 2026-08-25T23:05Z |
+| Four-channel live revision | Verify `halseybot--0000017` is the sole active healthy revision with one running replica, zero restarts, and no ingress | Pass | 2026-08-25T23:09Z |
+| Approved state reset | Delete all eight approved state blobs after deployment; replay Capitol again after the retiring revision briefly recreated its silent baseline | Pass | 2026-08-25T23:09Z |
+| Capitol fresh launch | Confirm one catalog banner plus 28 product cards acknowledged, zero Discord failures, and 28-row state recreated | Pass; 29 notifications | 2026-08-25T23:10Z |
+
+### Live Role Verification
+
+- Container App identity `06f8ad24-606e-4264-a42c-977a9114bc90` retains Key Vault
+  secret `Get` and `List` access for the storage connection string and Discord webhook.
+- Blob Storage and ACR continue using their existing secret-backed configuration; no RBAC
+  or resource changes were introduced by this application revision.
+- **Status:** Pass
 
 **Validated by:** `azure-validate` workflow
 
-**Validation timestamp:** 2026-08-25T21:55Z
+**Validation timestamp:** 2026-08-25T23:02Z
 
 ---
 
@@ -212,20 +292,22 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 ## 10. Functional Verification
 
-- **Status:** Verified
-- **Backend:** Python compilation, Bash syntax, diff checks, and seven unit tests passed
-  in an Azure Container Registry `linux/amd64` no-push build.
+- **Status:** Verified in production
+- **Backend:** Python compilation, Bash syntax, diff checks, and twelve unit tests passed
+  in Azure Container Registry `linux/amd64` build `cbd`.
 - **UI:** Not applicable; this is a background worker with ingress disabled.
 - **External feeds:** The Capitol Halsey collection feed returns product data. Girl in
   the Tower correctly returns `401` while password-protected and will use controlled
   retries until it opens.
-- **Build:** ACR Task run `cb3` succeeded on 2026-08-25.
+- **Discord:** All four Key Vault-backed webhooks are unique and reachable. Capitol's
+  fresh launch produced 29 acknowledged notifications with zero delivery failures.
+- **Build:** ACR Task run `cbd` succeeded on 2026-08-25.
 
 ---
 
 ## 11. Next Steps
 
-> Current: Deployed
+> Current: Four-channel Discord deployment complete
 
-1. Monitor the normal five-minute heartbeat and protected-store retries.
-2. Run `./deploy.sh` for future tested, remote-build deployments.
+1. Keep Girl EU, UK, and US monitors on their controlled `401` retry cycle until the
+   storefront opens; each will announce its full catalog to its own channel.

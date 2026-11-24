@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
-import tweepy
 from azure.core.exceptions import AzureError
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -39,10 +38,12 @@ HEARTBEAT_INTERVAL_SECONDS = max(
 
 @dataclass(frozen=True)
 class Store:
+    display_name: str
     region: str
     base_url: str
     feed_path: str
     state_blob: str
+    webhook_secret: str
     currency: str
     flag: str
     announce_initial_products: bool
@@ -54,40 +55,48 @@ class Store:
 
 STORES = (
     Store(
+        display_name="Girl in the Tower EU",
         region="EU",
         base_url="https://www.girlinthetower.com/en-eu",
         feed_path="/products.json?limit=250",
         state_blob="girlinthetower-products-eu.csv",
+        webhook_secret="discord-webhook-girl-eu",
         currency="€",
         flag="🇪🇺",
         announce_initial_products=True,
     ),
     Store(
+        display_name="Girl in the Tower UK",
         region="UK",
         base_url="https://www.girlinthetower.com/en-uk",
         feed_path="/products.json?limit=250",
         state_blob="girlinthetower-products-uk.csv",
+        webhook_secret="discord-webhook-girl-uk",
         currency="£",
         flag="🇬🇧",
         announce_initial_products=True,
     ),
     Store(
+        display_name="Girl in the Tower US",
         region="US",
         base_url="https://www.girlinthetower.com",
         feed_path="/products.json?limit=250",
         state_blob="girlinthetower-products-us.csv",
+        webhook_secret="discord-webhook-girl-us",
         currency="$",
         flag="🇺🇸",
         announce_initial_products=True,
     ),
     Store(
+        display_name="Capitol Music US",
         region="CAPITOL US",
         base_url="https://shop.capitolmusic.com",
         feed_path="/collections/halsey/products.json?limit=250",
         state_blob="capitol-halsey-products-us.csv",
+        webhook_secret="discord-webhook-capitol-us",
         currency="$",
         flag="🇺🇸",
-        announce_initial_products=False,
+        announce_initial_products=True,
     ),
 )
 
@@ -98,8 +107,19 @@ PRIORITY_MAP = {
     "NEW PRODUCT (OUT OF STOCK)": 2,
 }
 
+STATUS_STYLE = {
+    "NEW PRODUCT": ("✨", "NEW DROP", 0xEB459E),
+    "NEW PRODUCT (OUT OF STOCK)": (
+        "👀",
+        "NEW ITEM • CURRENTLY SOLD OUT",
+        0xFEE75C,
+    ),
+    "BACK IN STOCK": ("🔥", "BACK IN STOCK", 0x57F287),
+    "OUT OF STOCK": ("💨", "SOLD OUT", 0xED4245),
+}
+
 Product = dict[str, Any]
-TweetQueue = asyncio.PriorityQueue[
+NotificationQueue = asyncio.PriorityQueue[
     tuple[int, int, tuple[Product, str, Store, asyncio.Future[None]]]
 ]
 
@@ -108,6 +128,18 @@ class StoreFetchError(Exception):
     def __init__(
         self,
         status: int | None,
+        message: str,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status = status
+        self.retry_after = retry_after
+
+
+class DiscordWebhookError(Exception):
+    def __init__(
+        self,
+        status: int,
         message: str,
         retry_after: float | None = None,
     ) -> None:
@@ -222,7 +254,7 @@ async def fetch_products(
 async def check_store(
     session: aiohttp.ClientSession,
     container_client: ContainerClient,
-    tweet_queue: TweetQueue,
+    notification_queue: NotificationQueue,
     sequence: itertools.count[int],
     store: Store,
 ) -> tuple[int, int, bool]:
@@ -246,7 +278,7 @@ async def check_store(
         }
         acknowledgement = asyncio.get_running_loop().create_future()
         acknowledgements.append(acknowledgement)
-        await tweet_queue.put((
+        await notification_queue.put((
             -1,
             next(sequence),
             (alert, "MULTIPLE NEW PRODUCTS", store, acknowledgement),
@@ -255,7 +287,7 @@ async def check_store(
     for product, status in changes:
         acknowledgement = asyncio.get_running_loop().create_future()
         acknowledgements.append(acknowledgement)
-        await tweet_queue.put(
+        await notification_queue.put(
             (
                 PRIORITY_MAP.get(status, 99),
                 next(sequence),
@@ -277,75 +309,144 @@ async def check_store(
     return len(products), len(changes), previous_products is None
 
 
-def build_tweet_text(product: Product, status: str, store: Store) -> str:
+def build_discord_payload(
+    product: Product, status: str, store: Store
+) -> dict[str, Any]:
     if status == "MULTIPLE NEW PRODUCTS":
-        return "🚨 Lots of new items have dropped! Individual posts to follow 🚨"
+        return {
+            "content": (
+                f"# 🚨 {store.display_name} catalog drop\n"
+                f"{store.flag} **{store.region}** • Individual product cards incoming"
+            ),
+            "allowed_mentions": {"parse": []},
+        }
 
-    title = str(product["title"]).title()
+    title = str(product["title"]).strip()
     variants = product.get("variants", [])
     if not variants:
         raise ValueError(f"Product {product.get('handle', '<unknown>')} has no variants")
 
     variant = variants[0]
-    if status == "OUT OF STOCK":
-        link = ""
-    elif "signed" in title.casefold():
-        link = f"🔗 Instant Checkout\n{store.base_url}/cart/{variant['id']}:1"
+    if "signed" in title.casefold() and status != "OUT OF STOCK":
+        link = f"{store.base_url}/cart/{variant['id']}:1"
     else:
-        link = f"🔗 {store.base_url}/products/{product['handle']}"
+        link = f"{store.base_url}/products/{product['handle']}"
 
-    return (
-        f"{store.flag} {status} {store.flag}\n"
-        f"{title} - {store.currency}{variant['price']}\n{link}"
-    ).rstrip()
+    icon, label, color = STATUS_STYLE[status]
+    available = "OUT OF STOCK" not in status
+    embed: dict[str, Any] = {
+        "author": {"name": f"HalseyBot • {store.display_name}"},
+        "title": title,
+        "url": link,
+        "description": "Tap the product title to shop.",
+        "color": color,
+        "fields": [
+            {
+                "name": "💰 Price",
+                "value": f"**{store.currency}{variant['price']}**",
+                "inline": True,
+            },
+            {
+                "name": "🏬 Store",
+                "value": f"{store.flag} {store.display_name}",
+                "inline": True,
+            },
+            {
+                "name": "📦 Availability",
+                "value": "Available now" if available else "Currently sold out",
+                "inline": True,
+            },
+        ],
+        "footer": {"text": "Fast alerts • Stock can change without warning"},
+    }
+    images = product.get("images", [])
+    if images and isinstance(images[0], dict):
+        image_url = images[0].get("src")
+        if isinstance(image_url, str) and image_url:
+            embed["image"] = {"url": image_url}
+
+    return {
+        "content": f"## {icon} {label}",
+        "embeds": [embed],
+        "allowed_mentions": {"parse": []},
+    }
 
 
-def publish_tweet(
-    twitter_client: tweepy.Client,
+async def publish_discord_notification(
+    session: aiohttp.ClientSession,
+    webhook_url: str,
     product: Product,
     status: str,
     store: Store,
 ) -> None:
-    tweet_text = build_tweet_text(product, status, store)
+    payload = build_discord_payload(product, status, store)
+    summary = str(payload["content"])
     if DRY_RUN:
-        print(f"[DRY RUN] Would tweet: {tweet_text}", flush=True)
+        print(f"[DRY RUN] Would notify Discord: {summary}", flush=True)
         return
 
-    response = twitter_client.create_tweet(text=tweet_text)
-    if response.errors:
-        raise tweepy.TweepyException(f"Twitter returned errors: {response.errors}")
-    print(f"Tweeted: {tweet_text}", flush=True)
+    async with session.post(webhook_url, json=payload) as response:
+        if response.status in {200, 204}:
+            print(f"Notified Discord: {summary}", flush=True)
+            return
+
+        retry_after = parse_retry_after(response.headers.get("Retry-After"))
+        if response.status == 429:
+            try:
+                body = await response.json(content_type=None)
+            except (aiohttp.ClientError, ValueError):
+                body = {}
+            if isinstance(body, dict):
+                retry_after = parse_retry_after(str(body.get("retry_after", "")))
+
+        detail = (await response.text()).strip()
+        raise DiscordWebhookError(
+            response.status,
+            f"HTTP {response.status}: {detail or 'Discord webhook request failed'}",
+            retry_after,
+        )
 
 
-async def tweet_worker(
-    tweet_queue: TweetQueue, twitter_client: tweepy.Client
+async def notification_worker(
+    notification_queue: NotificationQueue,
+    session: aiohttp.ClientSession,
+    webhook_url: str,
 ) -> None:
     while True:
-        _, _, (product, status, store, acknowledgement) = await tweet_queue.get()
+        _, _, (product, status, store, acknowledgement) = (
+            await notification_queue.get()
+        )
         retry_delay = 10.0
         try:
             while True:
                 try:
-                    await asyncio.to_thread(
-                        publish_tweet,
-                        twitter_client,
+                    await publish_discord_notification(
+                        session,
+                        webhook_url,
                         product,
                         status,
                         store,
                     )
                     if not acknowledgement.done():
                         acknowledgement.set_result(None)
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
                     break
-                except tweepy.TooManyRequests:
+                except DiscordWebhookError as error:
+                    delay = (
+                        error.retry_after
+                        if error.status == 429 and error.retry_after is not None
+                        else retry_delay
+                    )
                     print(
-                        "Twitter rate limit hit; retrying in 15 minutes.",
+                        f"Discord notification failed ({error}); retrying in "
+                        f"{delay:.0f}s.",
                         flush=True,
                     )
-                    await asyncio.sleep(15 * 60)
-                except tweepy.TweepyException as error:
+                    await asyncio.sleep(delay)
+                    retry_delay = min(MAX_BACKOFF_SECONDS, retry_delay * 2)
+                except (aiohttp.ClientError, asyncio.TimeoutError) as error:
                     print(
-                        f"Tweet failed ({error}); retrying in "
+                        f"Discord notification failed ({error}); retrying in "
                         f"{retry_delay:.0f}s.",
                         flush=True,
                     )
@@ -356,13 +457,13 @@ async def tweet_worker(
                         acknowledgement.set_exception(error)
                     break
         finally:
-            tweet_queue.task_done()
+            notification_queue.task_done()
 
 
 async def monitor_store(
     session: aiohttp.ClientSession,
     container_client: ContainerClient,
-    tweet_queue: TweetQueue,
+    notification_queue: NotificationQueue,
     sequence: itertools.count[int],
     store: Store,
 ) -> None:
@@ -373,7 +474,7 @@ async def monitor_store(
     while True:
         try:
             product_count, change_count, established_baseline = await check_store(
-                session, container_client, tweet_queue, sequence, store
+                session, container_client, notification_queue, sequence, store
             )
             failures = 0
             delay = POLL_INTERVAL_SECONDS
@@ -413,22 +514,18 @@ async def monitor_store(
 
 
 def initialise_clients() -> tuple[
-    BlobServiceClient, ContainerClient, tweepy.Client
+    BlobServiceClient, ContainerClient, dict[str, str]
 ]:
     credential = DefaultAzureCredential()
     secret_client = SecretClient(vault_url=KEY_VAULT_URL, credential=credential)
     try:
         connection_string = secret_client.get_secret("connection-string").value
-        twitter_client = tweepy.Client(
-            bearer_token=secret_client.get_secret("bearer-token").value,
-            consumer_key=secret_client.get_secret("api-key").value,
-            consumer_secret=secret_client.get_secret("api-key-secret").value,
-            access_token=secret_client.get_secret("access-token").value,
-            access_token_secret=secret_client.get_secret(
-                "access-token-secret"
-            ).value,
-            wait_on_rate_limit=True,
-        )
+        webhook_urls = {
+            store.webhook_secret: secret_client.get_secret(
+                store.webhook_secret
+            ).value
+            for store in STORES
+        }
     finally:
         secret_client.close()
         credential.close()
@@ -439,12 +536,14 @@ def initialise_clients() -> tuple[
     container_client = blob_service_client.get_container_client(
         "merchbotproducts"
     )
-    return blob_service_client, container_client, twitter_client
+    return blob_service_client, container_client, webhook_urls
 
 
 async def main() -> None:
-    blob_service_client, container_client, twitter_client = initialise_clients()
-    tweet_queue: TweetQueue = asyncio.PriorityQueue()
+    blob_service_client, container_client, webhook_urls = initialise_clients()
+    notification_queues: dict[str, NotificationQueue] = {
+        store.webhook_secret: asyncio.PriorityQueue() for store in STORES
+    }
     sequence = itertools.count()
     timeout = aiohttp.ClientTimeout(total=20)
     headers = {
@@ -457,12 +556,19 @@ async def main() -> None:
             timeout=timeout, headers=headers
         ) as session:
             await asyncio.gather(
-                tweet_worker(tweet_queue, twitter_client),
+                *(
+                    notification_worker(
+                        notification_queues[store.webhook_secret],
+                        session,
+                        webhook_urls[store.webhook_secret],
+                    )
+                    for store in STORES
+                ),
                 *(
                     monitor_store(
                         session,
                         container_client,
-                        tweet_queue,
+                        notification_queues[store.webhook_secret],
                         sequence,
                         store,
                     )
@@ -474,5 +580,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    print("Girl in the Tower monitor starting.", flush=True)
+    print("Store monitor starting with Discord notifications.", flush=True)
     asyncio.run(main())
