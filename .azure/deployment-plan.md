@@ -4,6 +4,11 @@
 
 Generated: 2026-08-25T22:34:00+01:00
 
+Current update (2026-11-24): deployed source `bb4b5c8` with the EU feed at
+`https://www.iamhalsey.com/en-eu`. Preserve all existing inventory state blobs and
+Discord channels; do not repeat the historical fresh-catalog reset below.
+The user confirmed the existing subscription and West Europe deployment target.
+
 ---
 
 ## 1. Project Overview
@@ -154,6 +159,26 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 ## 7. Execution Checklist
 
+### 2026-11-24 EU refresh validation proof
+
+| Check | Command or evidence | Result | Timestamp (UTC) |
+|-------|---------------------|--------|-----------------|
+| Source | `git rev-parse HEAD` | `bb4b5c81778e4aebfe9286e646fffc988fa8e048` | 2026-11-24T11:26Z |
+| Runtime | Existing Dockerfile uses pinned Python 3.12; no Node.js runtime | Pass | 2026-11-24T11:26Z |
+| Subscription and resources | `az account show`, `az group show`, `az containerapp show`, `az acr show` with the configured subscription | Enabled subscription, existing West Europe resources, running revision `halseybot--0000017` | 2026-11-24T11:26Z |
+| Worker configuration | `az containerapp show` | Single revision, ingress disabled, one fixed replica | 2026-11-24T11:26Z |
+| Managed identity and secrets | `az keyvault show`; `az keyvault secret list` (metadata only) | Existing app identity retains secret Get/List; storage and four Discord secrets enabled | 2026-11-24T11:27Z |
+| Registry access | Existing secret-backed registry configuration | No managed-identity AcrPull assignment or infrastructure provisioning required | 2026-11-24T11:27Z |
+| Policy | `az policy assignment list --subscription 91bb5510-5bb1-4f85-a022-12f907612b87` | Only existing Defender default assignment | 2026-11-24T11:27Z |
+| Source checks | `python -m unittest discover -s tests -v`; `bash -n deploy.sh` | All 13 tests and shell syntax pass | 2026-11-24T11:27Z |
+| Container build | `az acr build --registry halseybotacr --platform linux/amd64 --no-push .` | Run `cbe` succeeded, including all 13 tests | 2026-11-24T11:27Z |
+| IaC validate/what-if | No IaC or new resources; application revision update only | Not applicable | 2026-11-24T11:27Z |
+| EU feed | Current configured feed fetched without notifications | 36 products returned | 2026-11-24T11:12Z |
+| Production image | `./deploy.sh`; ACR run `cbf` | Pushed `20261124112839-bb4b5c8`, digest `sha256:670506ccaee5a33713767b100b8e324e520fbc97c712016b3040d329a098ffd0` | 2026-11-24T11:29Z |
+| Live revision | `az containerapp revision list`; `az containerapp replica list` | `halseybot--0000018` healthy, one ready replica, zero restarts; old revision retired | 2026-11-24T11:32Z |
+| EU Discord delivery | Revision-specific console logs | 21 new product cards (12 available, nine sold out) plus one catalog banner acknowledged; EU checked 36 products and saved state after delivery | 2026-11-24T11:31Z |
+| Other storefronts | Revision-specific console logs | US checked 36 products and Capitol checked 28 with no changes; UK feed returns HTTP 404 and backs off | 2026-11-24T11:32Z |
+
 ### Phase 1: Planning
 - [x] Analyze workspace
 - [x] Gather requirements
@@ -271,7 +296,7 @@ because the resource delta is zero and no quota-controlled capacity is requested
 
 **Validated by:** `azure-validate` workflow
 
-**Validation timestamp:** 2026-08-25T23:02Z
+**Validation timestamp:** 2026-11-24T11:28Z
 
 ---
 
@@ -293,21 +318,22 @@ because the resource delta is zero and no quota-controlled capacity is requested
 ## 10. Functional Verification
 
 - **Status:** Verified in production
-- **Backend:** Python compilation, Bash syntax, diff checks, and twelve unit tests passed
-  in Azure Container Registry `linux/amd64` build `cbd`.
+- **Backend:** Source checks and all 13 unit tests passed in Azure Container Registry
+  `linux/amd64` builds `cbe` (validation) and `cbf` (deployment).
 - **UI:** Not applicable; this is a background worker with ingress disabled.
-- **External feeds:** The Capitol Halsey collection feed returns product data. Girl in
-  the Tower correctly returns `401` while password-protected and will use controlled
-  retries until it opens.
-- **Discord:** All four Key Vault-backed webhooks are unique and reachable. Capitol's
-  fresh launch produced 29 acknowledged notifications with zero delivery failures.
-- **Build:** ACR Task run `cbd` succeeded on 2026-08-25.
+- **External feeds:** EU and US return 36 products each; Capitol returns 28.
+  The existing UK feed returns HTTP 404 and uses the normal bounded backoff.
+- **Discord:** The EU refresh delivered 21 new product cards plus one catalog banner,
+  with no delivery failures. Existing state was preserved and advanced after delivery.
+- **Runtime:** Revision `halseybot--0000018` is the sole active healthy revision,
+  with one ready replica, zero restarts, disabled ingress, and no scale triggers.
+- **Build:** ACR Task run `cbf` deployed source `bb4b5c8` on 2026-11-24.
 
 ---
 
 ## 11. Next Steps
 
-> Current: Four-channel Discord deployment complete
+> Current: EU storefront refresh deployed and Discord delivery verified
 
-1. Keep Girl EU, UK, and US monitors on their controlled `401` retry cycle until the
-   storefront opens; each will announce its full catalog to its own channel.
+1. Keep the existing worker polling and preserving inventory state between checks.
+2. Update the UK feed when its replacement URL is confirmed; it currently returns 404.
