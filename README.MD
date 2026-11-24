@@ -1,6 +1,6 @@
 # HalseyBot
 
-HalseyBot is an asynchronous Python worker that monitors the Girl in the Tower and
+HalseyBot is an asynchronous Python worker that monitors Halsey's merchandise and
 Capitol Music Shopify storefronts and posts product and inventory changes to Discord.
 It runs as one always-on Azure Container Apps Consumption replica.
 
@@ -8,14 +8,16 @@ It runs as one always-on Azure Container Apps Consumption replica.
 
 | Region | Discord channel | Feed | State blob |
 |--------|-----------------|------|------------|
-| EU | `#girl-eu` | `https://www.girlinthetower.com/en-eu/products.json` | `girlinthetower-products-eu.csv` |
+| EU | `#girl-eu` | `https://www.iamhalsey.com/en-eu/products.json` | `girlinthetower-products-eu.csv` |
 | UK | `#girl-uk` | `https://www.girlinthetower.com/en-uk/products.json` | `girlinthetower-products-uk.csv` |
 | US | `#girl-us` | `https://www.girlinthetower.com/products.json` | `girlinthetower-products-us.csv` |
 | Capitol US | `#capitol-us` | `https://shop.capitolmusic.com/collections/halsey/products.json` | `capitol-halsey-products-us.csv` |
 
-The store is currently password-protected. The worker treats `401` and `403`
-responses as expected temporary conditions and retries every five minutes. Once
-the store is public, it automatically switches to the normal polling interval.
+The EU monitor uses the new iamhalsey.com storefront and retains its existing state
+blob and Discord channel to preserve inventory history and notification routing.
+The worker treats `401` and `403` responses from password-protected stores as
+expected temporary conditions and retries every five minutes. Once a store is
+public, it automatically switches to the normal polling interval.
 When a state blob does not exist, the storefront's complete first successful catalog
 is announced before its new state is saved.
 

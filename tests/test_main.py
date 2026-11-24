@@ -129,17 +129,7 @@ class RetryTests(unittest.TestCase):
 
 class NotificationFormattingTests(unittest.TestCase):
     def test_builds_rich_embed_with_locale_link_and_image(self) -> None:
-        store = Store(
-            display_name="Girl in the Tower EU",
-            region="EU",
-            base_url="https://www.girlinthetower.com/en-eu",
-            feed_path="/products.json?limit=250",
-            state_blob="state.csv",
-            webhook_secret="discord-webhook-girl-eu",
-            currency="€",
-            flag="🇪🇺",
-            announce_initial_products=True,
-        )
+        store = next(store for store in STORES if store.region == "EU")
 
         payload = build_discord_payload(
             product("tower-shirt", True), "NEW PRODUCT", store
@@ -155,10 +145,22 @@ class NotificationFormattingTests(unittest.TestCase):
         )
         self.assertEqual(
             embed["url"],
-            "https://www.girlinthetower.com/en-eu/products/tower-shirt",
+            "https://www.iamhalsey.com/en-eu/products/tower-shirt",
         )
         self.assertEqual(
             embed["image"]["url"], "https://cdn.example/product.jpg"
+        )
+
+    def test_signed_eu_product_uses_new_store_checkout(self) -> None:
+        store = next(store for store in STORES if store.region == "EU")
+
+        payload = build_discord_payload(
+            product("signed-vinyl", True), "NEW PRODUCT", store
+        )
+
+        self.assertEqual(
+            payload["embeds"][0]["url"],
+            "https://www.iamhalsey.com/en-eu/cart/signed-vinyl-variant:1",
         )
 
     def test_omits_image_when_storefront_has_none(self) -> None:

@@ -57,7 +57,7 @@ STORES = (
     Store(
         display_name="Girl in the Tower EU",
         region="EU",
-        base_url="https://www.girlinthetower.com/en-eu",
+        base_url="https://www.iamhalsey.com/en-eu",
         feed_path="/products.json?limit=250",
         state_blob="girlinthetower-products-eu.csv",
         webhook_secret="discord-webhook-girl-eu",
